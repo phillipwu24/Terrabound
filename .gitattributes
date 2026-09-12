@@ -1,0 +1,131 @@
+# ============================================================
+# Unreal Engine 5 - .gitattributes
+# Solo project. Place this at the repository root
+# (same folder as your .uproject file).
+#
+# IMPORTANT: commit this file BEFORE adding any assets.
+# LFS rules only apply to files staged after the rules exist.
+# ============================================================
+
+# ------------------------------------------------------------
+# Line endings
+# Normalize text files; let Git decide what's text by default.
+# ------------------------------------------------------------
+* text=auto
+
+# Explicit text types (safe from accidental binary detection)
+*.cpp        text
+*.h          text
+*.hpp        text
+*.c          text
+*.cs         text
+*.ini        text
+*.txt        text
+*.md         text
+*.json       text
+*.xml        text
+*.yml        text
+*.yaml       text
+*.uproject   text
+*.uplugin    text
+*.usf        text
+*.ush        text
+*.py         text
+*.sh         text eol=lf
+*.bat        text eol=crlf
+*.cmd        text eol=crlf
+*.ps1        text eol=crlf
+
+# ------------------------------------------------------------
+# Git LFS - Unreal asset formats
+# These are binary, unmergeable, and often large.
+# ------------------------------------------------------------
+*.uasset     filter=lfs diff=lfs merge=lfs -text
+*.umap       filter=lfs diff=lfs merge=lfs -text
+*.upk        filter=lfs diff=lfs merge=lfs -text
+*.udk        filter=lfs diff=lfs merge=lfs -text
+*.ubulk      filter=lfs diff=lfs merge=lfs -text
+*.uexp       filter=lfs diff=lfs merge=lfs -text
+*.locres     filter=lfs diff=lfs merge=lfs -text
+
+# ------------------------------------------------------------
+# Git LFS - Textures and images
+# ------------------------------------------------------------
+*.png        filter=lfs diff=lfs merge=lfs -text
+*.jpg        filter=lfs diff=lfs merge=lfs -text
+*.jpeg       filter=lfs diff=lfs merge=lfs -text
+*.gif        filter=lfs diff=lfs merge=lfs -text
+*.bmp        filter=lfs diff=lfs merge=lfs -text
+*.tga        filter=lfs diff=lfs merge=lfs -text
+*.tif        filter=lfs diff=lfs merge=lfs -text
+*.tiff       filter=lfs diff=lfs merge=lfs -text
+*.psd        filter=lfs diff=lfs merge=lfs -text
+*.exr        filter=lfs diff=lfs merge=lfs -text
+*.hdr        filter=lfs diff=lfs merge=lfs -text
+*.dds        filter=lfs diff=lfs merge=lfs -text
+*.ico        filter=lfs diff=lfs merge=lfs -text
+*.icns       filter=lfs diff=lfs merge=lfs -text
+
+# ------------------------------------------------------------
+# Git LFS - 3D models and animation
+# ------------------------------------------------------------
+*.fbx        filter=lfs diff=lfs merge=lfs -text
+*.obj        filter=lfs diff=lfs merge=lfs -text
+*.blend      filter=lfs diff=lfs merge=lfs -text
+*.blend1     filter=lfs diff=lfs merge=lfs -text
+*.dae        filter=lfs diff=lfs merge=lfs -text
+*.3ds        filter=lfs diff=lfs merge=lfs -text
+*.abc        filter=lfs diff=lfs merge=lfs -text
+*.glb        filter=lfs diff=lfs merge=lfs -text
+*.gltf       filter=lfs diff=lfs merge=lfs -text
+*.ply        filter=lfs diff=lfs merge=lfs -text
+*.stl        filter=lfs diff=lfs merge=lfs -text
+*.max        filter=lfs diff=lfs merge=lfs -text
+*.ma         filter=lfs diff=lfs merge=lfs -text
+*.mb         filter=lfs diff=lfs merge=lfs -text
+*.ztl        filter=lfs diff=lfs merge=lfs -text
+
+# ------------------------------------------------------------
+# Git LFS - Audio
+# ------------------------------------------------------------
+*.wav        filter=lfs diff=lfs merge=lfs -text
+*.mp3        filter=lfs diff=lfs merge=lfs -text
+*.ogg        filter=lfs diff=lfs merge=lfs -text
+*.flac       filter=lfs diff=lfs merge=lfs -text
+*.aif        filter=lfs diff=lfs merge=lfs -text
+*.aiff       filter=lfs diff=lfs merge=lfs -text
+*.m4a        filter=lfs diff=lfs merge=lfs -text
+*.xma        filter=lfs diff=lfs merge=lfs -text
+
+# ------------------------------------------------------------
+# Git LFS - Video
+# ------------------------------------------------------------
+*.mp4        filter=lfs diff=lfs merge=lfs -text
+*.mov        filter=lfs diff=lfs merge=lfs -text
+*.avi        filter=lfs diff=lfs merge=lfs -text
+*.mkv        filter=lfs diff=lfs merge=lfs -text
+*.webm       filter=lfs diff=lfs merge=lfs -text
+*.wmv        filter=lfs diff=lfs merge=lfs -text
+*.mpg        filter=lfs diff=lfs merge=lfs -text
+*.mpeg       filter=lfs diff=lfs merge=lfs -text
+
+# ------------------------------------------------------------
+# Git LFS - Fonts
+# ------------------------------------------------------------
+*.ttf        filter=lfs diff=lfs merge=lfs -text
+*.otf        filter=lfs diff=lfs merge=lfs -text
+*.ttc        filter=lfs diff=lfs merge=lfs -text
+*.woff       filter=lfs diff=lfs merge=lfs -text
+*.woff2      filter=lfs diff=lfs merge=lfs -text
+
+# ------------------------------------------------------------
+# Git LFS - Archives and other binaries
+# ------------------------------------------------------------
+*.zip        filter=lfs diff=lfs merge=lfs -text
+*.7z         filter=lfs diff=lfs merge=lfs -text
+*.rar        filter=lfs diff=lfs merge=lfs -text
+*.gz         filter=lfs diff=lfs merge=lfs -text
+*.tar        filter=lfs diff=lfs merge=lfs -text
+*.tgz        filter=lfs diff=lfs merge=lfs -text
+*.pdf        filter=lfs diff=lfs merge=lfs -text
+*.bin        filter=lfs diff=lfs merge=lfs -text

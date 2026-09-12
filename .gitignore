@@ -1,0 +1,114 @@
+# ============================================================
+# Unreal Engine 5 - .gitignore
+# Solo project. Place this at the repository root
+# (same folder as your .uproject file).
+# ============================================================
+
+# ------------------------------------------------------------
+# Unreal generated folders
+# All of these are rebuilt by the engine and must NOT be committed.
+# ------------------------------------------------------------
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+Build/
+
+# Plugin equivalents (any depth, covers nested plugin folders)
+**/Binaries/
+**/Intermediate/
+**/DerivedDataCache/
+**/Saved/
+
+# Keep a few things Unreal puts inside Build/ that are worth versioning
+!Build/*/
+!Build/**/*.ico
+!Build/**/PakBlacklist*.txt
+
+# ------------------------------------------------------------
+# Generated project / IDE files
+# Regenerate with: right-click .uproject > Generate Project Files
+# ------------------------------------------------------------
+*.sln
+*.suo
+*.sdf
+*.opensdf
+*.opendb
+*.VC.db
+*.VC.opendb
+*.xcodeproj/
+*.xcworkspace/
+
+# Visual Studio
+.vs/
+
+# Visual Studio Code
+.vscode/
+
+# Rider / JetBrains
+.idea/
+*.DotSettings.user
+
+# ------------------------------------------------------------
+# Compiled binaries and intermediates
+# ------------------------------------------------------------
+*.dll
+*.exe
+*.lib
+*.a
+*.la
+*.lai
+*.so
+*.dylib
+*.pdb
+*.obj
+*.o
+*.slo
+*.lo
+*.gch
+*.pch
+*.out
+*.app
+*.ipa
+*.apk
+*.aab
+
+# ------------------------------------------------------------
+# Built lighting data
+# Ignored to keep the repo small. Lumen (UE5 default) means this
+# usually doesn't matter. If you switch to baked static lighting
+# and want it versioned, delete the line below.
+# ------------------------------------------------------------
+*_BuiltData.uasset
+
+# ------------------------------------------------------------
+# Source art / working files
+# Uncomment if you keep large source art next to the project and
+# don't want it in the repo. Leave commented to version it via LFS.
+# ------------------------------------------------------------
+# SourceArt/
+# RawContent/
+
+# ------------------------------------------------------------
+# OS junk
+# ------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ------------------------------------------------------------
+# Misc
+# ------------------------------------------------------------
+*.log
+*.tmp
+*.bak
+*.swp
+*~
+.ignore
