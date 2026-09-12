@@ -1,10 +1,21 @@
 # Terrabound — Design
 
-Autobattler / tower defense hybrid. Unreal Engine 5.
+Autobattler / tower defense hybrid. Unreal Engine 5.8.
 
 This document records decisions and, more importantly, why they were made.
 Sections 4–5 are deliberately unresolved and stay that way until there is
 something playable.
+
+**How to read this document.** Everything here is the current best guess, not a
+specification. Numbers are starting points chosen so there is something concrete
+to tune away from — a reroll cost of 2 is not a target, it is a place to begin.
+Structural decisions (the exit instead of a crystal, grid-is-data, buy-to-bench,
+one unit per tile) are firmer, but none of them are load-bearing enough to
+protect against a playtest that says otherwise.
+
+The rule is: **when play contradicts the doc, the doc is wrong.** Change it in
+the same sitting. A design document that has not been edited in a month is not a
+stable design, it is an abandoned one.
 
 **Companion documents.** `CLAUDE.md` is the operational version — architecture
 invariants and working style. `PLAN.md` is the current checkpoint's task

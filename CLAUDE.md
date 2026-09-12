@@ -14,9 +14,39 @@ Player buys champions from a shop, places them on a hex board, and defends an
 exit behind the back row against waves of enemies. Endless run, chase a high
 score.
 
-**Engine:** Unreal Engine 5
+**Engine:** Unreal Engine 5.8
+**Language:** C++ for all logic. Blueprints for data and assembly only.
+**Team:** solo project.
 **Status:** Checkpoint 1 in progress — board, controls, shop, placement. No
 enemies, no combat, no GAS yet. See `PLAN.md`.
+
+## Build command
+
+```
+"C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" TerraboundEditor Win64 Development -Project="C:\Users\Phillip\Documents\Unreal Projects\Terrabound\Terrabound.uproject" -WaitMutex -FromMsBuild
+```
+
+If a build fails due to a locked DLL, the editor is open. Tell me to close it
+rather than trying to work around it.
+
+## How to work with me
+
+- **Plan before executing.** When I say "let's do task X," post a plan and wait
+  for approval before creating or editing anything — every task, not just ones
+  touching more than one file. The plan states: what you'll do step by step
+  (files touched, classes and their parents, which of them owns what data, C++
+  vs Blueprint per the split below); what I need to do in the editor, sequenced
+  against your steps; and any design decision the task touches that isn't
+  already settled by `DESIGN.md`, `CLAUDE.md`, or `PLAN.md` — surfaced here
+  with a recommendation, never picked silently. I'll discuss changes or
+  approve; execution starts only on approval.
+- **Small diffs.** One system per change. Do not refactor adjacent code you were
+  not asked to touch.
+- **Scope your file list.** State which files you will create or modify before
+  starting, and stay inside that list.
+- **Keep asking as you go.** If execution turns up a decision the plan missed,
+  stop and raise it the same way rather than guessing. Do not invent gameplay
+  behaviour — the plan is expected to be imperfect, not the last chance to ask.
 
 ## Precedence
 
@@ -275,20 +305,56 @@ config file, clearly marked as placeholders.
 
 ## Working style
 
-**C++ and Blueprints both in use.** The dividing line: C++ owns anything
-pathfinding, targeting, or grid state touches. Blueprints own tuning, visuals,
-and composition.
+**C++ for all gameplay logic. Blueprints for data and assembly only.** Anything
+that makes a gameplay decision, mutates game state, or runs per tick is C++.
+Blueprints hold tuning values, wire up assets, and compose what C++ provides —
+they do not implement behaviour. A Blueprint graph that branches on game state is
+logic in the wrong place.
+
+**Exception: graph-native tools.** Animation Blueprints (state machines, blend
+spaces, transition rules), Niagara, and material graphs are logic, but they are
+logic in their native form. Rewriting them in C++ is worse, not purer. They stay
+Blueprints and are not violations of this rule.
+
+The table below is the same rule applied per system, not a second rule.
 
 | C++ | Blueprint |
 |---|---|
 | Tile struct, grid array, board generation | Champion/enemy variants (derive from C++ base) |
 | A*, path caching, invalidation | Ability visuals, VFX, animation graphs |
 | Targeting, aggro, lock/re-scan | Wave definitions, trait thresholds, tuning |
-| Combat resolution, GAS attribute sets | UI widgets, shop layout |
+| Combat resolution, GAS attribute sets | UI widget layout and binding |
 | Wave spawning, economy state | Level setup, spawn hex configuration |
 
 The reason for the line: the moment a Blueprint owns tile state, something reads
 it through an actor reference and the grid-is-data invariant quietly dies.
+
+UI is the case most likely to drift. A widget Blueprint lays out the shop and
+binds to values C++ exposes; it does not decide whether a card is affordable or
+what a click does. Those are `ShopSystem` and `EconomyState` answering, with the
+widget displaying the answer.
+
+The practical reason, beyond architecture: **Blueprint graphs are binary assets
+you cannot read or edit.** Logic that lives in a widget graph is logic you cannot
+inspect, change, or debug, and any description of it in these docs is a guess.
+Logic in `.cpp` is logic you can work on.
+
+### Division of labour
+
+**Work in C++ and in these markdown files. Leave the editor to me.**
+
+Yours: `.h` and `.cpp` files, `.Build.cs`, config files, and these docs. Propose
+and write those directly.
+
+Mine: creating and editing Blueprints, data assets, materials, animation graphs,
+levels, and anything else authored in the Unreal Editor. When a task needs one of
+those, say precisely what to create — asset name, parent class, which folder,
+which values — and I will do it and confirm. Do not treat a task as blocked
+because it needs an editor step; hand me the step and carry on with the C++ side.
+
+This is a current constraint, not a principle. If an Unreal MCP server gets
+connected later, editing assets directly through it is fine and this section
+should be revised rather than worked around.
 
 ### Layout
 
@@ -371,8 +437,6 @@ exposed. Do not guess in either direction.
 ### General
 
 - Prototype code. Prefer readable and throwaway over abstract and future-proof.
-- Flag it rather than guessing when a task requires a design decision that isn't
-  in `DESIGN.md`, `CLAUDE.md`, or `PLAN.md`.
 - Keep tunable numbers in data assets or a config, not scattered in code.
 - Coordinate math stays pure — no world access, no side effects — so it stays
   testable. The round-trip and neighbor-symmetry tests are a hard gate; do not

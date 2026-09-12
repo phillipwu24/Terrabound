@@ -106,7 +106,8 @@ Source/Terrabound/
 ├── Pathfinding/    HexPathfinder            (task 7.1 only)
 ├── Units/          BoardUnitBase, ChampionBase
 ├── Economy/        ShopSystem, EconomyState, Bench
-└── Data/           ChampionData, BoardConfig
+├── Data/           ChampionData, BoardConfig
+└── TerraboundSettings.h   UDeveloperSettings holding the BoardConfig reference (1.4)
 
 Content/Terrabound/
 ├── Blueprints/     Grid/ Champions/ Core/
@@ -120,6 +121,16 @@ Content/Terrabound/
 
 Do not create `Combat/`, `Abilities/`, `Terrain/`, or `Waves/` this checkpoint. Empty scaffolding
 for unbuilt systems is on the "do not scaffold" list.
+
+**Every task is tagged with who does it**, per `CLAUDE.md`'s division of labour:
+
+- **[C++]** — Claude writes it directly. 22 of the 40 tasks.
+- **[Editor]** — the owner does it in the Unreal Editor. Claude specifies exactly what to create
+  (asset name, parent class, folder, values) and hands it over. Tasks 0.6, 2.1, 2.3, 4.1, 6.5, 7.2.
+- **[C++ + Editor]** — both, with a `C++:` / `Editor:` line under the tag saying which half is
+  which. Usually a C++ class plus the content asset created from it.
+
+An editor step does not block a task. Hand it over, write the C++ side, and carry on.
 
 **C++ / Blueprint split** per `CLAUDE.md`'s table: C++ owns the tile struct, grid array, board
 generation, and economy state. Blueprint owns champion variants (derived from `ChampionBase`),
@@ -158,10 +169,15 @@ Standard reference for all of the above: the Red Blob Games "Hexagonal Grids" ar
 
 # Phase 0 — Setup
 
-### 0.1 Module and folders
+### 0.1 Module and folders  
+**[C++]**
 Create `Source/Terrabound/` with the folders listed in Layout. Project compiles clean.
 
-### 0.2 `BoardConfig` (`Data/`)
+### 0.2 `BoardConfig` (`Data/`)  
+**[C++ + Editor]**
+**C++:** the `UPrimaryDataAsset` class and its fields.  
+**Editor:** create `DA_BoardConfig` from it and fill the values.
+
 `UPrimaryDataAsset`: `BoardWidth` (7), `BoardDepth` (8), `PlaceableRowCount` (5), `HexRadius`.
 Content asset at `Content/Terrabound/Data/DA_BoardConfig`. `HexRadius` is filled in by task 0.6.
 
@@ -170,7 +186,11 @@ tiles, configured in level setup. Defer to the enemy checkpoint; do not add a fi
 
 **Done when:** changing `BoardWidth` changes the generated grid with no recompile.
 
-### 0.3 GameplayTags for traits
+### 0.3 GameplayTags for traits  
+**[C++ + Editor]**
+**C++:** enable the GameplayTags module in `.Build.cs` and add native tag declarations if used.  
+**Editor:** create the tag table asset and add `Trait.Woodland` / `Trait.Bruiser`.
+
 Enable the GameplayTags module and declare `Trait.Woodland` and `Trait.Bruiser` in a tag table
 at `Content/Terrabound/Data/Traits/`.
 
@@ -180,7 +200,11 @@ what prevents the parallel trait system `CLAUDE.md` forbids.
 
 **Done when:** both tags resolve and are assignable on a data asset.
 
-### 0.4 Economy placeholder config
+### 0.4 Economy placeholder config  
+**[C++ + Editor]**
+**C++:** the config class or data asset type, and every accessor that reads it.  
+**Editor:** create the asset and enter the placeholder numbers.
+
 One config file or data asset holding every economy number, each marked as a placeholder.
 
 From `DESIGN.md` §4:
@@ -202,11 +226,13 @@ else gets this exemption.
 count, and champion cost are all read from here, not from a literal in `ShopSystem`, `Bench`, or
 a champion data asset.
 
-### 0.5 Debug panel
+### 0.5 Debug panel  
+**[C++]**
 Toggleable on-screen widget or console command set. Starts near-empty; every phase adds to it.
 Never remove from it.
 
-### 0.6 Import one Paragon character, set `HexRadius`
+### 0.6 Import one Paragon character, set `HexRadius`  
+**[Editor]**
 Import a single character from the free Epic Paragon packs on Fab into
 `Content/Terrabound/Characters/Paragon/`. Stand it in the level next to a placeholder hex and pick
 a `HexRadius` that reads correctly at roughly the Phase 3.1 camera distance. Write the number into
@@ -225,7 +251,8 @@ Per `CLAUDE.md`, leave the pack exactly as imported.
 
 # Phase 1 — Grid data
 
-### 1.1 `HexCoordinates` (`Grid/`)
+### 1.1 `HexCoordinates` (`Grid/`)  
+**[C++]**
 `FHexCoord` struct: `int32 Q, R`. Equality, `GetTypeHash`, `ToString`.
 Static pure helpers in the same header: `AxialToCube`, `AxialDistance`, `GetNeighbours`,
 `OffsetToAxial`, `AxialToOffset`, `AxialToWorld2D`, `World2DToAxial` (with cube rounding).
@@ -233,13 +260,15 @@ Pure functions only — no world access, no side effects. This makes them testab
 coordinate math out of actor code.
 **Done when:** usable as a `TMap` key and callable from Blueprint.
 
-### 1.2 Coordinate round-trip tests
+### 1.2 Coordinate round-trip tests  
+**[C++]**
 Automation tests: world → axial → world returns the same hex for all 56 tiles and for random
 points inside each. Neighbour symmetry holds across the whole board, **both row parities**.
 **Done when:** tests pass. **Do not proceed with failing tests.** Every system downstream inherits
 these bugs, and they surface disguised as input and pathing bugs.
 
-### 1.3 `HexTile` (`Grid/`)
+### 1.3 `HexTile` (`Grid/`)  
+**[C++]**
 `FHexTile`: `FHexCoord Coord`, `bool bIsSpawn`, `bool bIsPlaceable`, `bool bIsWalkable`,
 `TWeakObjectPtr<ABoardUnitBase> Occupant`, `TWeakObjectPtr<AActor> Terrain`, `float PathCost`.
 Fields independent. `Terrain` is declared now and stays null all checkpoint.
@@ -258,20 +287,33 @@ stand on it.
 **Done when:** compiles with only a forward declaration; occupancy and walkability are separate
 fields.
 
-### 1.4 `HexGrid` (`Grid/`)
+### 1.4 `HexGrid` (`Grid/`)  
+**[C++]**
 Flat `TArray<FHexTile>` owned by a `UWorldSubsystem`. Generates from `BoardConfig` on world init.
 Index ↔ coord conversion. Accessors: `GetTile`, `IsValidCoord`, `SetOccupant`, `ClearOccupant`,
 `GetPlayerZoneTiles`.
+
+**How the subsystem finds `DA_BoardConfig`:** a `UDeveloperSettings` class
+(e.g. `UTerraboundSettings`), registered under Project Settings, holds a
+`TSoftObjectPtr<UBoardConfig>` pointing at the content asset. `HexGrid` reads
+the settings singleton and resolves the soft reference on world init. One
+place to point at the config, editable from Project Settings without touching
+a level, and never duplicated per-level. Do not hardcode the asset path, and
+do not require a level Blueprint to wire the reference in — that would make
+board generation depend on level setup, which contradicts "generates on world
+init."
 
 Rows `0 .. BoardDepth - PlaceableRowCount - 1` are the enemy side; the rest are placeable, derived
 from config at generation time.
 **Done when:** 56 tiles, 35 placeable, and setting `PlaceableRowCount` to 6 yields 42 with no code
 change.
 
-### 1.5 Debug: grid state dump
+### 1.5 Debug: grid state dump  
+**[C++]**
 Console command printing tile count, placeable count, and any tile's full state by coord.
 
-### 1.6 Set `bIsSpawn` on a tile
+### 1.6 Set `bIsSpawn` on a tile  
+**[C++]**
 Two entry points, both hitting the same C++ function on the `HexGrid` subsystem:
 
 - Console command `SetSpawnFlag <q> <r> <0|1>` — debug only.
@@ -305,35 +347,47 @@ spawn tiles, and the 1.5 dump reflects changes made from either entry point.
 
 Deliberately cheap. Do not spend time here; it gets replaced.
 
-### 2.1 Hex tile mesh
+### 2.1 Hex tile mesh  
+**[Editor]**
 6-sided cylinder scaled thin, rotated to a pointy-top profile. Made in-engine, no DCC tool. Sized
 from `HexRadius` with a small gap so borders read.
 
-### 2.2 `HexGridVisualizer` (`Grid/`)
+### 2.2 `HexGridVisualizer` (`Grid/`)  
+**[C++ + Editor]**
+**C++:** the visualizer actor, ISM component, and transform generation.  
+**Editor:** place it in the level and assign the 2.1 mesh.
+
 One actor with a `UInstancedStaticMeshComponent`, one instance per tile, transforms from
 `AxialToWorld2D`. **Not 56 actors.** Reads from `HexGrid`; never writes to it.
 **Done when:** the 7×8 board renders, rows visibly stagger, and it reads as a TFT board rather
 than a ragged grid.
 
-### 2.3 Tile state material
+### 2.3 Tile state material  
+**[Editor]**
 Per-instance custom data float driving colour. States: `Default`, `PlayerZone`, `EnemyZone`,
 `Hovered`, `ValidPlacement`, `InvalidPlacement`, `Occupied`.
 **Done when:** player zone is visually distinct from enemy zone and states are settable per-tile
 from C++.
 
-### 2.4 Debug coordinate overlay
+### 2.4 Debug coordinate overlay  
+**[C++]**
 Toggleable `(q, r)` text at each hex centre. Used to verify Phase 3 by eye.
 
 ---
 
 # Phase 3 — Camera and controls
 
-### 3.1 Camera
+### 3.1 Camera  
+**[C++ + Editor]**
+**C++:** camera actor, zoom and pitch clamps, exposed limits.  
+**Editor:** place it, frame the board by eye, save the values.
+
 Fixed-angle camera looking down at the board, roughly TFT's framing. Zoom and slight pitch allowed;
 free orbit is not.
 **Done when:** all 56 hexes are on screen and legible at default zoom.
 
-### 3.2 Hex under cursor
+### 3.2 Hex under cursor  
+**[C++]**
 Deproject the mouse to a ray, intersect the board's ground plane, convert the hit point with
 `World2DToAxial`.
 
@@ -342,11 +396,13 @@ units would couple input to rendering and quietly breach the grid-is-data invari
 **Done when:** hovering any point returns the correct hex, including near edges and corners,
 verified against the 2.4 overlay.
 
-### 3.3 Hover feedback
+### 3.3 Hover feedback  
+**[C++]**
 Hovered tile switches to `Hovered`. Clears on leaving the board.
 **Done when:** no flicker at tile boundaries.
 
-### 3.4 Click and drag
+### 3.4 Click and drag  
+**[C++]**
 Left-click press to select, hold to drag, release to drop. Right-click or Escape cancels and
 returns the held champion to its origin. Dropping outside the board cancels.
 **Done when:** a placeholder can be picked up and dropped on another hex, and cancel reliably
@@ -356,7 +412,8 @@ restores the original position.
 
 # Phase 4 — Champions
 
-### 4.1 Import the remaining Paragon assets
+### 4.1 Import the remaining Paragon assets  
+**[Editor]**
 One character is already in from task **0.6**, and `HexRadius` is already fixed against it. Import
 the other 2–3 from the free Epic Paragon packs on Fab into
 `Content/Terrabound/Characters/Paragon/`.
@@ -369,7 +426,8 @@ scale the character. The radius was fixed in 0.6 and the board is already built 
 **Done when:** all 3–4 skeletons and animation sets are intact and each character stands on a hex
 at a scale that reads correctly at the 3.1 camera distance.
 
-### 4.2 `BoardUnitBase` (`Units/`)
+### 4.2 `BoardUnitBase` (`Units/`)  
+**[C++]**
 Shared base for champions and, later, enemies. Holds `FHexCoord CurrentCoord`, snap-to-hex
 positioning, and a team flag. Nothing champion-specific.
 
@@ -377,7 +435,11 @@ Declared now because `ChampionBase` and `EnemyBase` both derive from it per `CLA
 and retrofitting a base class under a live class later is worse than writing a thin one now.
 **Done when:** compiles, holds coordinate state, positions correctly on a hex.
 
-### 4.3 `ChampionData` (`Data/`)
+### 4.3 `ChampionData` (`Data/`)  
+**[C++ + Editor]**
+**C++:** the `UPrimaryDataAsset` class.  
+**Editor:** create the 3–4 champion assets and fill in tiers, meshes, anim BPs, and trait tags.
+
 `UPrimaryDataAsset`: display name, tier (1–5), skeletal mesh, anim blueprint, and
 `FGameplayTagContainer Traits` populated from `Trait.Woodland` / `Trait.Bruiser`.
 
@@ -396,7 +458,11 @@ each one's cost resolves through `TierCostTable` rather than being stored on the
 (`DESIGN.md` MVP says 2–3 champions; 3–4 is the owner's call for this checkpoint and costs
 nothing, since they are data assets.)
 
-### 4.4 `ChampionBase` (`Units/`)
+### 4.4 `ChampionBase` (`Units/`)  
+**[C++ + Editor]**
+**C++:** `ChampionBase` and its initialisation from `ChampionData`.  
+**Editor:** the per-champion Blueprints deriving from it, in `Blueprints/Champions/`.
+
 Derives from `BoardUnitBase`. Initialised from a `ChampionData`. Idle animation only. Faces the
 enemy side.
 
@@ -404,7 +470,8 @@ Per `CLAUDE.md`'s split, individual champions are **Blueprints deriving from `Ch
 `Content/Terrabound/Blueprints/Champions/`. Do not create a C++ class per champion.
 **Done when:** a champion spawns on a specified hex and idles.
 
-### 4.5 Debug spawn command
+### 4.5 Debug spawn command  
+**[C++]**
 `SpawnChampion <DataAssetName> <q> <r>`. Places a champion directly onto a hex, bypassing both
 the shop and the bench.
 
@@ -413,7 +480,11 @@ before a shop exists, and it must never be reachable from normal play. Do not re
 the shop's buy flow in Phase 6.
 **Done when:** every champion can be spawned to arbitrary hexes from console.
 
-### 4.6 Team tint hook
+### 4.6 Team tint hook  
+**[C++ + Editor]**
+**C++:** the team flag and the parameter-setting call.  
+**Editor:** the material parameter or outline shader it drives.
+
 Material parameter or outline shader driven by the `BoardUnitBase` team flag. Player-side only for
 now, but the switch exists — `DESIGN.md` calls for distinguishing sides by tint rather than by
 model, since both sides draw from the same packs.
@@ -424,7 +495,8 @@ model, since both sides draw from the same packs.
 
 Built and tested against debug spawns. No shop dependency.
 
-### 5.1 Placement validation
+### 5.1 Placement validation  
+**[C++]**
 `CanPlaceAt(coord)` is true only when the coord is valid, `bIsPlaceable`, and `Occupant` is null.
 `bIsSpawn` tiles are never placeable.
 
@@ -447,38 +519,48 @@ cause the rejection, and removing the guard breaks the test.
 Same principle applies to the other cases — each fixture should leave its own guard as the only
 possible reason for the result.
 
-### 5.2 Placement preview
+### 5.2 Placement preview  
+**[C++]**
 During a drag, valid hexes show `ValidPlacement`, invalid ones `InvalidPlacement`. Continuous
 during the drag, not only on release.
 **Done when:** dragging lights the legal hexes and the enemy zone stays dark.
 
-### 5.3 Commit placement
+### 5.3 Commit placement  
+**[C++]**
 On valid drop: set the tile's `Occupant`, clear the origin tile, move the actor to the new centre.
 `bIsWalkable` is **not** touched — units do not block.
 **Done when:** grid data and visual position never disagree, verified with the 1.5 dump.
 
-### 5.4 Repositioning and swap
+### 5.4 Repositioning and swap  
+**[C++]**
 Drag a placed champion to another legal hex. Dropping on an occupied hex **swaps** the two, as in
 TFT.
 **Done when:** swap works both directions and leaves grid data consistent.
 
-### 5.5 Occupancy debug view
+### 5.5 Occupancy debug view  
+**[C++]**
 Debug panel lists every occupied hex and its occupant, accurate mid-drag.
 
 ---
 
 # Phase 6 — Economy and shop
 
-### 6.1 `EconomyState` (`Economy/`)
+### 6.1 `EconomyState` (`Economy/`)  
+**[C++]**
 Gold as an integer. `Add`, `Spend`, `CanAfford`, change delegate. Starting gold from the 0.4
 placeholder config. C++ per `CLAUDE.md`'s split.
 
-### 6.2 Champion pool
+### 6.2 Champion pool  
+**[C++ + Editor]**
+**C++:** the pool class, draw and return logic, and the row struct.  
+**Editor:** the data table asset and its placeholder rows.
+
 Data table mapping tier → pool size and roll odds, per the 0.4 carve-out. Champions are drawn from
 the pool and returned on sell. Mark the numbers as placeholders like everything else in 0.4.
 **Done when:** a debug command rolls a large sample and the tier distribution matches config.
 
-### 6.3 `ShopSystem` (`Economy/`)
+### 6.3 `ShopSystem` (`Economy/`)  
+**[C++]**
 `ShopSlotCount` slots, read from the 0.4 config — currently 5, not a literal. `Reroll()` draws at
 configured odds and costs `RerollCost` gold. `Buy(slotIndex)` checks gold, asks `Bench` whether it
 has space, deducts, empties the slot, and hands the champion to `Bench` to place in its first free
@@ -495,7 +577,8 @@ A full bench blocks buying — the buy button disables and the attempt fails cle
 **Done when:** buying without enough gold or with a full bench fails cleanly and leaves state
 untouched.
 
-### 6.4 `Bench` (`Economy/`)
+### 6.4 `Bench` (`Economy/`)  
+**[C++]**
 `BenchSlotCount` slots, read from the 0.4 config — currently 6, not a literal.
 **The only way a champion reaches the board.**
 
@@ -517,7 +600,8 @@ during prep once persistent damage exists.
 **Done when:** all three drag directions work, grid occupancy stays correct across every
 transition, and a full bench blocks buying.
 
-### 6.5 Shop and bench UI
+### 6.5 Shop and bench UI  
+**[Editor]**
 Widget with `ShopSlotCount` cards (portrait, name, cost from `TierCostTable`, trait tags), gold
 display, reroll button with cost, and the bench row rendered beneath the board. Cards disable when
 unaffordable or when the bench is full, with the reason legible. Blueprint, per the split. Function
@@ -526,7 +610,11 @@ over polish.
 **After 6.4 on purpose** — the bench row renders from `Bench`'s array, so the array has to exist
 first.
 
-### 6.6 Sell
+### 6.6 Sell  
+**[C++ + Editor]**
+**C++:** refund, pool return, tile clear, and the sell entry point.  
+**Editor:** the sell zone widget or input binding.
+
 Drag to a sell zone, or select and press a key. Refunds gold, returns the champion to the pool,
 frees the tile.
 
@@ -534,7 +622,11 @@ Note for later: `CLAUDE.md` requires that units are **never destroyed and respaw
 waves**, so attributes persist. Selling is an intentional removal and is exempt — but do not build
 any board-refresh or wave-reset path that destroys and recreates champions.
 
-### 6.7 Trait counter UI
+### 6.7 Trait counter UI  
+**[C++ + Editor]**
+**C++:** the tag count across board occupants and a change delegate.  
+**Editor:** the panel widget bound to it.
+
 Panel listing the two trait tags and how many board champions carry each. **Board only — bench
 champions do not count**, as in TFT. Implemented as a **tag count across the board**, which is the
 same mechanism thresholds will use later. No thresholds, no effects, no unlocks.
@@ -545,7 +637,11 @@ bench decrements its traits.
 
 # Phase 7 — Checkpoint validation
 
-### 7.1 `HexPathfinder` and debug walker (`Pathfinding/`)
+### 7.1 `HexPathfinder` and debug walker (`Pathfinding/`)  
+**[C++ + Editor]**
+**C++:** A*, the virtual goal node, the walker, and crossing-time logging.  
+**Editor:** a placeholder capsule and a level with spawn tiles flagged.
+
 Hand-rolled A* over the tile array. Grid A*, not NavMesh.
 
 Per `CLAUDE.md`, enemies path to **a single virtual goal node with zero-cost edges from every
@@ -565,7 +661,8 @@ Log the crossing time.
 **Done when:** the walker crosses the board and the crossing time is written down. That number is
 what the next checkpoint's tuning starts from.
 
-### 7.2 Full-loop smoke test
+### 7.2 Full-loop smoke test  
+**[Editor]**
 Start PIE with starting gold. Reroll. Buy 3–4 champions and confirm each lands **on the bench, not
 the board**. Drag them onto hexes. Reposition, swap, pull one back to the bench. Fill the bench and
 confirm buying is blocked. Sell from both bench and board. Watch trait counts throughout.
