@@ -208,7 +208,7 @@ what prevents the parallel trait system `CLAUDE.md` forbids.
 One config file or data asset holding every economy number, each marked as a placeholder.
 
 From `DESIGN.md` §4:
-- `TierCostTable` — cost by tier, 1/2/3/4/5. **Cost is derived from tier, TFT-style.** It is not
+- `TierCostTable` — cost by tier, 1/2/3. **Cost is derived from tier, TFT-style.** It is not
   stored per champion; see 4.3.
 - `BaseIncomePerWave` — 5
 - `StartingGold` — not specified in `DESIGN.md`; pick a value, mark it unresolved
@@ -440,7 +440,7 @@ and retrofitting a base class under a live class later is worse than writing a t
 **C++:** the `UPrimaryDataAsset` class.  
 **Editor:** create the 3–4 champion assets and fill in tiers, meshes, anim BPs, and trait tags.
 
-`UPrimaryDataAsset`: display name, tier (1–5), skeletal mesh, anim blueprint, and
+`UPrimaryDataAsset`: display name, tier (1–3), skeletal mesh, anim blueprint, and
 `FGameplayTagContainer Traits` populated from `Trait.Woodland` / `Trait.Bruiser`.
 
 **No `Cost` field.** Cost is derived from tier via the `TierCostTable` in the 0.4 config, TFT-style.

@@ -620,7 +620,7 @@ wall. Candidates: terrain rebuilds, scaling healing costs, unit replacement.
 Rough starting points, purely so there's something to push against — all of these
 are wrong, they're just wrong in a specific enough way to learn from:
 
-- Unit cost 1/2/3/4/5 by tier
+- Unit cost 1/2/3 by tier
 - Base income 5/wave plus per-kill gold
 - Healing roughly 1 gold per 20% HP restored
 - 5 shop slots, 6 bench slots, reroll 2 gold, sell refunds full purchase price

@@ -90,6 +90,15 @@ Build/
 # RawContent/
 
 # ------------------------------------------------------------
+# Paragon character packs (free, Fab)
+# These land as Content/<PackName>/ (e.g. ParagonLtBelica) and are
+# large enough to blow past GitHub's free 1GB LFS quota almost
+# immediately. They're freely re-downloadable from Fab, so they're
+# not versioned here — re-import them after a fresh clone instead.
+# ------------------------------------------------------------
+Content/Paragon*/
+
+# ------------------------------------------------------------
 # OS junk
 # ------------------------------------------------------------
 .DS_Store
