@@ -46,6 +46,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Hex Grid")
 	TArray<FHexCoord> GetPlayerZoneTiles() const;
 
+	/** Total generated tile count. Derived read, not new state. */
+	UFUNCTION(BlueprintPure, Category = "Hex Grid")
+	int32 GetTileCount() const { return Tiles.Num(); }
+
 private:
 	void GenerateGrid();
 	FHexTile* GetMutableTile(const FHexCoord& Coord);
