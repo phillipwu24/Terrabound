@@ -8,9 +8,11 @@
 #include "CoreMinimal.h"
 #include "HAL/IConsoleManager.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "../Grid/HexGrid.h"
 #include "../Grid/HexCoordinates.h"
 #include "../Grid/HexTile.h"
+#include "../Grid/HexGridVisualizer.h"
 
 namespace
 {
@@ -90,6 +92,23 @@ namespace
 
 		UE_LOG(LogTemp, Display, TEXT("SetSpawnFlag: %s spawn=%d"), *Coord.ToString(), Enabled != 0);
 	}
+
+	void DebugCoordOverlay(const TArray<FString>& Args, UWorld* World)
+	{
+		if (!World)
+		{
+			UE_LOG(LogTemp, Error, TEXT("DebugCoordOverlay: no world."));
+			return;
+		}
+
+		int32 Count = 0;
+		for (TActorIterator<AHexGridVisualizer> It(World); It; ++It)
+		{
+			It->ToggleCoordOverlay();
+			++Count;
+		}
+		UE_LOG(LogTemp, Display, TEXT("DebugCoordOverlay: toggled on %d HexGridVisualizer actor(s)."), Count);
+	}
 }
 
 static FAutoConsoleCommand DebugPingCommand(
@@ -114,4 +133,10 @@ static FAutoConsoleCommandWithWorldAndArgs SetSpawnFlagCommand(
 	TEXT("SetSpawnFlag"),
 	TEXT("SetSpawnFlag <q> <r> <0|1> - debug-only toggle of a tile's spawn flag."),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugSetSpawnFlag)
+);
+
+static FAutoConsoleCommandWithWorldAndArgs DebugCoordOverlayCommand(
+	TEXT("DebugCoordOverlay"),
+	TEXT("Toggles the (q, r) coordinate text overlay on all HexGridVisualizer actors."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugCoordOverlay)
 );

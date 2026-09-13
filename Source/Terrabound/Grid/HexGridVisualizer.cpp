@@ -4,10 +4,13 @@
 #include "Components/InstancedStaticMeshComponent.h"
 #include "HexGrid.h"
 #include "HexCoordinates.h"
+#include "DrawDebugHelpers.h"
 
 AHexGridVisualizer::AHexGridVisualizer()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	// Ticks unconditionally so the debug coord overlay can be toggled at runtime; DrawCoordOverlay
+	// early-returns when it's off, so this costs one bool check per frame otherwise.
+	PrimaryActorTick.bCanEverTick = true;
 
 	TileInstances = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("TileInstances"));
 	SetRootComponent(TileInstances);
@@ -26,6 +29,33 @@ void AHexGridVisualizer::BeginPlay()
 {
 	Super::BeginPlay();
 	BuildTileInstances();
+}
+
+void AHexGridVisualizer::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+	if (bShowCoordOverlay)
+	{
+		DrawCoordOverlay();
+	}
+}
+
+void AHexGridVisualizer::DrawCoordOverlay() const
+{
+	const UHexGrid* Grid = GetWorld() ? GetWorld()->GetSubsystem<UHexGrid>() : nullptr;
+	if (!Grid)
+	{
+		return;
+	}
+
+	const float HexRadius = Grid->GetHexRadius();
+	for (const FHexCoord& Coord : Grid->GetAllTileCoords())
+	{
+		const FVector2D WorldPos2D = UHexCoordinateLibrary::AxialToWorld2D(Coord, HexRadius);
+		const FVector TextLocation(WorldPos2D.X, WorldPos2D.Y, 10.f);
+		// Duration 0: drawn fresh every tick while the overlay is on, gone the instant it's off.
+		DrawDebugString(GetWorld(), TextLocation, Coord.ToString(), nullptr, FColor::White, 0.f, false, 1.5f);
+	}
 }
 
 void AHexGridVisualizer::BuildTileInstances()
