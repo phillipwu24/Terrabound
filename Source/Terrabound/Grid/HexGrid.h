@@ -42,6 +42,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Hex Grid")
 	bool ClearOccupant(const FHexCoord& Coord);
 
+	/**
+	 * Sets whether Coord is a spawn tile. A function, not exposed state: FHexTile.bIsSpawn stays
+	 * non-UPROPERTY, so a level Blueprint asks the grid to flip the flag rather than holding a
+	 * copy of it. Returns false for an invalid coord.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Hex Grid")
+	bool SetSpawnFlag(const FHexCoord& Coord, bool bEnabled);
+
 	/** Coordinates of every placeable (player-zone) tile. */
 	UFUNCTION(BlueprintPure, Category = "Hex Grid")
 	TArray<FHexCoord> GetPlayerZoneTiles() const;

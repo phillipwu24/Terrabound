@@ -64,6 +64,32 @@ namespace
 			Tile->Terrain.IsValid(),
 			Tile->PathCost);
 	}
+
+	void DebugSetSpawnFlag(const TArray<FString>& Args, UWorld* World)
+	{
+		UHexGrid* Grid = World ? World->GetSubsystem<UHexGrid>() : nullptr;
+		if (!Grid)
+		{
+			UE_LOG(LogTemp, Error, TEXT("SetSpawnFlag: no HexGrid subsystem for this world."));
+			return;
+		}
+
+		int32 Q = 0, R = 0, Enabled = 0;
+		if (Args.Num() < 3 || !LexTryParseString(Q, *Args[0]) || !LexTryParseString(R, *Args[1]) || !LexTryParseString(Enabled, *Args[2]))
+		{
+			UE_LOG(LogTemp, Error, TEXT("SetSpawnFlag: usage: SetSpawnFlag <q> <r> <0|1>"));
+			return;
+		}
+
+		const FHexCoord Coord(Q, R);
+		if (!Grid->SetSpawnFlag(Coord, Enabled != 0))
+		{
+			UE_LOG(LogTemp, Error, TEXT("SetSpawnFlag: %s is not a valid coord."), *Coord.ToString());
+			return;
+		}
+
+		UE_LOG(LogTemp, Display, TEXT("SetSpawnFlag: %s spawn=%d"), *Coord.ToString(), Enabled != 0);
+	}
 }
 
 static FAutoConsoleCommand DebugPingCommand(
@@ -82,4 +108,10 @@ static FAutoConsoleCommandWithWorldAndArgs DebugTileStateCommand(
 	TEXT("DebugTileState"),
 	TEXT("DebugTileState <q> <r> - logs one tile's full state by axial coord."),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugTileState)
+);
+
+static FAutoConsoleCommandWithWorldAndArgs SetSpawnFlagCommand(
+	TEXT("SetSpawnFlag"),
+	TEXT("SetSpawnFlag <q> <r> <0|1> - debug-only toggle of a tile's spawn flag."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugSetSpawnFlag)
 );

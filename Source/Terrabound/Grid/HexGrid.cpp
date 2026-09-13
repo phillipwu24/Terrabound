@@ -83,6 +83,17 @@ bool UHexGrid::ClearOccupant(const FHexCoord& Coord)
 	return true;
 }
 
+bool UHexGrid::SetSpawnFlag(const FHexCoord& Coord, bool bEnabled)
+{
+	FHexTile* Tile = GetMutableTile(Coord);
+	if (!Tile)
+	{
+		return false;
+	}
+	Tile->bIsSpawn = bEnabled;
+	return true;
+}
+
 TArray<FHexCoord> UHexGrid::GetPlayerZoneTiles() const
 {
 	TArray<FHexCoord> Result;
