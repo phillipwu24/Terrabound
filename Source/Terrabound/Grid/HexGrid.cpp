@@ -23,6 +23,7 @@ void UHexGrid::GenerateGrid()
 	BoardWidth = Config->BoardWidth;
 	BoardDepth = Config->BoardDepth;
 	PlaceableRowCount = Config->PlaceableRowCount;
+	HexRadius = Config->HexRadius;
 
 	Tiles.Empty(BoardWidth * BoardDepth);
 	const int32 EnemyRowCount = BoardDepth - PlaceableRowCount;
@@ -103,6 +104,17 @@ TArray<FHexCoord> UHexGrid::GetPlayerZoneTiles() const
 		{
 			Result.Add(Tile.Coord);
 		}
+	}
+	return Result;
+}
+
+TArray<FHexCoord> UHexGrid::GetAllTileCoords() const
+{
+	TArray<FHexCoord> Result;
+	Result.Reserve(Tiles.Num());
+	for (const FHexTile& Tile : Tiles)
+	{
+		Result.Add(Tile.Coord);
 	}
 	return Result;
 }

@@ -58,6 +58,14 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Hex Grid")
 	int32 GetTileCount() const { return Tiles.Num(); }
 
+	/** Coordinates of every generated tile, placeable or not. Derived read, not new state. */
+	UFUNCTION(BlueprintPure, Category = "Hex Grid")
+	TArray<FHexCoord> GetAllTileCoords() const;
+
+	/** Hex circumradius in world units, as read from BoardConfig at generation. Derived read. */
+	UFUNCTION(BlueprintPure, Category = "Hex Grid")
+	float GetHexRadius() const { return HexRadius; }
+
 private:
 	void GenerateGrid();
 	FHexTile* GetMutableTile(const FHexCoord& Coord);
@@ -69,4 +77,5 @@ private:
 	int32 BoardWidth = 0;
 	int32 BoardDepth = 0;
 	int32 PlaceableRowCount = 0;
+	float HexRadius = 0.f;
 };
