@@ -25,6 +25,13 @@ void AHexGridVisualizer::SetTileVisualState(const FHexCoord& Coord, EHexTileVisu
 	}
 }
 
+EHexTileVisualState AHexGridVisualizer::GetBaseVisualState(const FHexCoord& Coord) const
+{
+	const UHexGrid* Grid = GetWorld() ? GetWorld()->GetSubsystem<UHexGrid>() : nullptr;
+	const FHexTile* Tile = Grid ? Grid->GetTile(Coord) : nullptr;
+	return (Tile && Tile->bIsPlaceable) ? EHexTileVisualState::PlayerZone : EHexTileVisualState::EnemyZone;
+}
+
 void AHexGridVisualizer::BeginPlay()
 {
 	Super::BeginPlay();
@@ -85,9 +92,6 @@ void AHexGridVisualizer::BuildTileInstances()
 		const FTransform InstanceTransform(FRotator::ZeroRotator, InstanceLocation - ActorOrigin, FVector::OneVector);
 		const int32 InstanceIndex = TileInstances->AddInstance(InstanceTransform);
 		InstanceIndexByCoord.Add(Coord, InstanceIndex);
-
-		const FHexTile* Tile = Grid->GetTile(Coord);
-		const EHexTileVisualState State = (Tile && Tile->bIsPlaceable) ? EHexTileVisualState::PlayerZone : EHexTileVisualState::EnemyZone;
-		TileInstances->SetCustomDataValue(InstanceIndex, 0, static_cast<float>(State));
+		TileInstances->SetCustomDataValue(InstanceIndex, 0, static_cast<float>(GetBaseVisualState(Coord)));
 	}
 }

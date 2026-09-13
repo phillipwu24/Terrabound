@@ -45,6 +45,13 @@ public:
 	 */
 	void SetTileVisualState(const FHexCoord& Coord, EHexTileVisualState State);
 
+	/**
+	 * Coord's resting state (PlayerZone/EnemyZone) with no hover/placement/occupancy overlay -
+	 * what a tile reverts to once a transient state like Hovered is no longer relevant. Defaults
+	 * to EnemyZone if Coord isn't a valid tile (matches BuildTileInstances' own fallback).
+	 */
+	EHexTileVisualState GetBaseVisualState(const FHexCoord& Coord) const;
+
 	/** Toggles the debug (q, r) coordinate text overlay, redrawn every tick while enabled. */
 	void ToggleCoordOverlay() { bShowCoordOverlay = !bShowCoordOverlay; }
 

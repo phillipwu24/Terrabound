@@ -8,6 +8,7 @@
 #include "BoardPlayerController.generated.h"
 
 class UHexGrid;
+class AHexGridVisualizer;
 
 /**
  * Owns cursor-to-hex resolution (PLAN.md 3.2), the shared basis for 3.3's hover feedback and
@@ -31,8 +32,10 @@ protected:
 
 private:
 	void UpdateHoveredHex();
+	void ApplyHoverVisual(bool bHadPreviousHex, const FHexCoord& PreviousHex, bool bHasNewHex, const FHexCoord& NewHex);
 
 	TWeakObjectPtr<UHexGrid> HexGrid;
+	TWeakObjectPtr<AHexGridVisualizer> Visualizer;
 
 	bool bHasHoveredHex = false;
 	FHexCoord HoveredHex;
