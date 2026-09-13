@@ -373,19 +373,26 @@ Source/Terrabound/
 Content/Terrabound/
 ├── Blueprints/     Grid/ Champions/ Enemies/ Terrain/ Core/
 ├── Data/           Champions/ Enemies/ Waves/ Traits/ DA_BoardConfig
-├── Characters/
-│   └── Paragon/    imported packs, left exactly as imported
 ├── Levels/
 ├── UI/
 ├── Materials/
 └── VFX/
+
+Content/ (root, outside Terrabound/)
+└── Paragon<CharacterName>/   one folder per imported pack, wherever the
+                              importer puts it by default
 ```
 
 This is the destination layout. Create folders as their systems get built, not in
 advance — see "Deliberately not built".
 
-Paragon packs stay as-imported. Reorganizing inside them causes redirector pain
-for no benefit.
+**Paragon packs live at `Content/` root** (e.g. `Content/ParagonLtBelica/`), not
+under `Content/Terrabound/` — wherever the importer puts them by default, left
+exactly as imported. Moving a pack afterward means fixing up redirectors on
+every future import for no benefit, so don't move them and don't suggest it.
+`Blueprints/Champions/` is where the champion Blueprints that reference these
+packs live (children of the future `AChampionBase` C++ class) — that folder
+holds gameplay Blueprints, not imported character packs.
 
 `Data/` is separate from `Blueprints/` deliberately — nearly every number in this
 project is wrong and will be edited constantly, so tuning values should be

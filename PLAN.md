@@ -112,11 +112,12 @@ Source/Terrabound/
 Content/Terrabound/
 ├── Blueprints/     Grid/ Champions/ Core/
 ├── Data/           Champions/ Traits/ DA_BoardConfig
-├── Characters/
-│   └── Paragon/    imported packs, left exactly as imported
 ├── Levels/
 ├── UI/
 └── Materials/
+
+Content/ (root, outside Terrabound/) — Paragon<CharacterName>/, one folder per
+imported pack, left exactly where the importer puts it and exactly as imported
 ```
 
 Do not create `Combat/`, `Abilities/`, `Terrain/`, or `Waves/` this checkpoint. Empty scaffolding
@@ -233,10 +234,11 @@ Never remove from it.
 
 ### 0.6 Import one Paragon character, set `HexRadius`  
 **[Editor]**
-Import a single character from the free Epic Paragon packs on Fab into
-`Content/Terrabound/Characters/Paragon/`. Stand it in the level next to a placeholder hex and pick
-a `HexRadius` that reads correctly at roughly the Phase 3.1 camera distance. Write the number into
-`DA_BoardConfig`.
+Import a single character from the free Epic Paragon packs on Fab, left wherever the
+importer puts it at `Content/` root (e.g. `Content/ParagonLtBelica/`) and exactly as
+imported — never moved into `Content/Terrabound/`. Stand it in the level next to a
+placeholder hex and pick a `HexRadius` that reads correctly at roughly the Phase 3.1
+camera distance. Write the number into `DA_BoardConfig`.
 
 **This is here, not in Phase 4, on purpose.** Task 2.1 sizes the tile mesh from `HexRadius` and 2.2
 builds the whole board from it. Importing characters afterwards means discovering the scale
@@ -415,11 +417,11 @@ restores the original position.
 ### 4.1 Import the remaining Paragon assets  
 **[Editor]**
 One character is already in from task **0.6**, and `HexRadius` is already fixed against it. Import
-the other 2–3 from the free Epic Paragon packs on Fab into
-`Content/Terrabound/Characters/Paragon/`.
+the other 2–3 from the free Epic Paragon packs on Fab, each left wherever the importer puts it at
+`Content/` root — never moved into `Content/Terrabound/`.
 
-**Leave the packs exactly as imported.** Per `CLAUDE.md`, reorganizing inside them causes
-redirector pain for no benefit.
+**Leave the packs exactly as imported.** Per `CLAUDE.md`, reorganizing them (moving them into
+`Content/Terrabound/` or reorganizing inside them) causes redirector pain for no benefit.
 
 **Watch for:** MOBA-scale, high-poly heroes. Do not change `HexRadius` to suit a later character —
 scale the character. The radius was fixed in 0.6 and the board is already built against it.
