@@ -34,9 +34,10 @@ public:
 
 	/**
 	 * Applies Data's skeletal mesh and anim blueprint to the inherited Mesh component and stores
-	 * the reference on ChampionData, so later systems (trait counting, GAS attribute init at
-	 * Step 2) can read tier/stats/traits from one place instead of duplicating fields here.
-	 * Does not touch HexGrid or CurrentCoord - call SnapToHex separately to place this champion.
+	 * Data itself as this champion's ChampionData, so later systems (trait counting, GAS
+	 * attribute init at Step 2) can read tier/stats/traits from one place instead of duplicating
+	 * fields here. Does not touch HexGrid or CurrentCoord - call SnapToHex separately to place
+	 * this champion.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Champion")
 	void InitializeFromChampionData(UChampionData* Data);

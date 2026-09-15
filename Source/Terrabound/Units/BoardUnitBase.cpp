@@ -4,7 +4,9 @@
 #include "Components/SceneComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "../Grid/HexGrid.h"
+#include "../TerraboundSettings.h"
 
 ABoardUnitBase::ABoardUnitBase()
 {
@@ -46,4 +48,37 @@ void ABoardUnitBase::SnapToHex(const FHexCoord& Coord)
 	const FVector2D WorldPos2D = UHexCoordinateLibrary::AxialToWorld2D(Coord, Grid->GetHexRadius());
 	SetActorLocation(FVector(WorldPos2D.X, WorldPos2D.Y, 0.f));
 	CurrentCoord = Coord;
+}
+
+void ABoardUnitBase::SetTeam(EBoardUnitTeam NewTeam)
+{
+	Team = NewTeam;
+	ApplyTeamTint();
+}
+
+void ABoardUnitBase::BeginPlay()
+{
+	Super::BeginPlay();
+	ApplyTeamTint();
+}
+
+void ABoardUnitBase::ApplyTeamTint()
+{
+	if (!Mesh || !GetWorld())
+	{
+		return;
+	}
+
+	const UTerraboundSettings* Settings = GetDefault<UTerraboundSettings>();
+	UMaterialInterface* BaseOverlay = Settings ? Settings->TeamTintOverlayMaterial.LoadSynchronous() : nullptr;
+	if (!BaseOverlay)
+	{
+		UE_LOG(LogTemp, Error, TEXT("ABoardUnitBase::ApplyTeamTint: no TeamTintOverlayMaterial set in Project Settings > Terrabound."));
+		return;
+	}
+
+	UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(BaseOverlay, this);
+	const FLinearColor TintColor = (Team == EBoardUnitTeam::Player) ? Settings->PlayerTintColor : Settings->EnemyTintColor;
+	MID->SetVectorParameterValue(TEXT("TintColor"), TintColor);
+	Mesh->SetOverlayMaterial(MID);
 }

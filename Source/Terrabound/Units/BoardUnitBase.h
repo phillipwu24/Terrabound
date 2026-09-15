@@ -61,14 +61,15 @@ public:
 
 	/**
 	 * Set once at spawn (debug spawn command, later real spawning) - not meant to change a
-	 * unit's side mid-life. Kept as a function rather than an EditAnywhere property because
-	 * task 4.6 hooks a material-tint update onto this same call; a raw editable property would
-	 * give Blueprint a second way to change team that skips the tint update.
+	 * unit's side mid-life. Kept as a function rather than an EditAnywhere property because it
+	 * also re-applies the team tint (see ApplyTeamTint); a raw editable property would give
+	 * Blueprint a second way to change team that skips the tint update.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Board Unit")
-	void SetTeam(EBoardUnitTeam NewTeam) { Team = NewTeam; }
+	void SetTeam(EBoardUnitTeam NewTeam);
 
 protected:
+	virtual void BeginPlay() override;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Board Unit")
 	TObjectPtr<USkeletalMeshComponent> Mesh;
 
@@ -84,6 +85,15 @@ protected:
 	TObjectPtr<UCapsuleComponent> HitBox;
 
 private:
+	/**
+	 * Applies PlayerTintColor/EnemyTintColor (per UTerraboundSettings) as an overlay material on
+	 * Mesh - the permanent, always-on visual identifier DESIGN.md calls for, since both sides draw
+	 * from the same Paragon packs. No-ops if Mesh or the world isn't ready yet (SetTeam can run
+	 * from a constructor, before either is safe); BeginPlay re-applies once it's safe to create a
+	 * dynamic material instance.
+	 */
+	void ApplyTeamTint();
+
 	FHexCoord CurrentCoord;
 
 	EBoardUnitTeam Team = EBoardUnitTeam::Player;

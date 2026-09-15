@@ -7,10 +7,10 @@
 #include "TerraboundSettings.generated.h"
 
 class UBoardConfig;
+class UMaterialInterface;
 
 /**
- * Project-wide settings, editable from Project Settings without touching a level. Currently
- * just the one soft reference HexGrid needs to find DA_BoardConfig at generation time (1.4).
+ * Project-wide settings, editable from Project Settings without touching a level.
  */
 UCLASS(config = Game, defaultconfig, meta = (DisplayName = "Terrabound"))
 class TERRABOUND_API UTerraboundSettings : public UDeveloperSettings
@@ -18,6 +18,21 @@ class TERRABOUND_API UTerraboundSettings : public UDeveloperSettings
 	GENERATED_BODY()
 
 public:
+	// HexGrid finds DA_BoardConfig through this at generation time (1.4).
 	UPROPERTY(EditAnywhere, config, Category = "Board")
 	TSoftObjectPtr<UBoardConfig> BoardConfig;
+
+	/**
+	 * BoardUnitBase's team tint hook (4.6) reads these three - one shared source rather than a
+	 * value repeated on every champion/enemy Blueprint. Must expose a Vector Parameter named
+	 * "TintColor" for ApplyTeamTint to drive.
+	 */
+	UPROPERTY(EditAnywhere, config, Category = "Team Tint")
+	TSoftObjectPtr<UMaterialInterface> TeamTintOverlayMaterial;
+
+	UPROPERTY(EditAnywhere, config, Category = "Team Tint")
+	FLinearColor PlayerTintColor = FLinearColor(0.1f, 0.4f, 1.f, 0.25f);
+
+	UPROPERTY(EditAnywhere, config, Category = "Team Tint")
+	FLinearColor EnemyTintColor = FLinearColor(1.f, 0.1f, 0.1f, 0.25f);
 };
