@@ -449,10 +449,17 @@ and retrofitting a base class under a live class later is worse than writing a t
 Storing it per champion would put an economy number outside the one config file, which 0.4 forbids,
 and would let a champion's cost silently disagree with its tier.
 
-Stat fields — max HP, attack damage, attack speed, **range in hexes** — are **AttributeSet
-initialization data for a later checkpoint**. Store them; read them nowhere. Do not add
-current-HP tracking, damage application, or any runtime stat mutation. That is GAS's job at
-Step 2.
+Stat fields — max HP, attack damage, attack speed, **range in hexes**, and **max mana** — are
+**AttributeSet initialization data for a later checkpoint**. Store them; read them nowhere. Do not
+add current-HP tracking, damage application, mana gain/spend, or any runtime stat mutation. That
+is GAS's job at Step 2.
+
+**Max mana only, no ability reference yet.** `DESIGN.md`'s GAS section treats mana as universal —
+every champion gains it on attack and on damage taken, then casts at a threshold — so leaving it
+off this asset would be a gap, not a scope cut. But the ability it casts is out of scope here: a
+`TSubclassOf<UGameplayAbility>` field needs the `GameplayAbilities` module and an actual ability
+class, neither of which exist before GAS arrives at Step 2. The threshold is data; the ability is
+GAS's job.
 
 **Done when:** 3–4 assets exist with distinct tiers, each carrying one or both trait tags, and
 each one's cost resolves through `TierCostTable` rather than being stored on the asset.
