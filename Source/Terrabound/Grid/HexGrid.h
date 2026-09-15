@@ -32,11 +32,9 @@ public:
 	 */
 	const FHexTile* GetTile(const FHexCoord& Coord) const;
 
-	// SetOccupant deliberately isn't here yet. ABoardUnitBase is only forward-declared until
-	// task 4.2, and assigning a real ABoardUnitBase* into TWeakObjectPtr<ABoardUnitBase>
-	// requires the compiler to know it derives from UObject — a forward declaration isn't
-	// enough for that assignment to compile. SetOccupant is added in 4.2 alongside the class
-	// it depends on.
+	/** Sets Coord's occupant. Returns false for an invalid coord. */
+	UFUNCTION(BlueprintCallable, Category = "Hex Grid")
+	bool SetOccupant(const FHexCoord& Coord, ABoardUnitBase* Unit);
 
 	/** Clears whatever occupies Coord, if anything. Returns false for an invalid coord. */
 	UFUNCTION(BlueprintCallable, Category = "Hex Grid")

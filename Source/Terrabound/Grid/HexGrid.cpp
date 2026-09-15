@@ -3,6 +3,7 @@
 #include "HexGrid.h"
 #include "../TerraboundSettings.h"
 #include "../Data/BoardConfig.h"
+#include "../Units/BoardUnitBase.h"
 
 void UHexGrid::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -71,6 +72,17 @@ FHexTile* UHexGrid::GetMutableTile(const FHexCoord& Coord)
 	}
 	const FIntPoint Offset = UHexCoordinateLibrary::AxialToOffset(Coord);
 	return &Tiles[Offset.Y * BoardWidth + Offset.X];
+}
+
+bool UHexGrid::SetOccupant(const FHexCoord& Coord, ABoardUnitBase* Unit)
+{
+	FHexTile* Tile = GetMutableTile(Coord);
+	if (!Tile)
+	{
+		return false;
+	}
+	Tile->Occupant = Unit;
+	return true;
 }
 
 bool UHexGrid::ClearOccupant(const FHexCoord& Coord)
