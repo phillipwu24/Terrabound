@@ -13,6 +13,8 @@
 #include "../Grid/HexCoordinates.h"
 #include "../Grid/HexTile.h"
 #include "../Grid/HexGridVisualizer.h"
+#include "../Units/ChampionBase.h"
+#include "../Data/ChampionData.h"
 
 namespace
 {
@@ -93,6 +95,60 @@ namespace
 		UE_LOG(LogTemp, Display, TEXT("SetSpawnFlag: %s spawn=%d"), *Coord.ToString(), Enabled != 0);
 	}
 
+	void DebugSpawnChampion(const TArray<FString>& Args, UWorld* World)
+	{
+		if (!World)
+		{
+			UE_LOG(LogTemp, Error, TEXT("SpawnChampion: no world."));
+			return;
+		}
+
+		int32 Q = 0, R = 0;
+		if (Args.Num() < 3 || !LexTryParseString(Q, *Args[1]) || !LexTryParseString(R, *Args[2]))
+		{
+			UE_LOG(LogTemp, Error, TEXT("SpawnChampion: usage: SpawnChampion <DataAssetName> <q> <r>"));
+			return;
+		}
+
+		UHexGrid* Grid = World->GetSubsystem<UHexGrid>();
+		if (!Grid)
+		{
+			UE_LOG(LogTemp, Error, TEXT("SpawnChampion: no HexGrid subsystem for this world."));
+			return;
+		}
+
+		const FHexCoord Coord(Q, R);
+		if (!Grid->IsValidCoord(Coord))
+		{
+			UE_LOG(LogTemp, Error, TEXT("SpawnChampion: %s is not a valid coord."), *Coord.ToString());
+			return;
+		}
+
+		// Debug only - bypasses shop, bench, and Phase 5's placement validation entirely. Never
+		// reuse this path for the shop's buy flow (PLAN.md 4.5).
+		const FString& AssetName = Args[0];
+		const FString AssetPath = FString::Printf(TEXT("/Game/Terrabound/Data/Champions/%s.%s"), *AssetName, *AssetName);
+		UChampionData* Data = LoadObject<UChampionData>(nullptr, *AssetPath);
+		if (!Data)
+		{
+			UE_LOG(LogTemp, Error, TEXT("SpawnChampion: couldn't load ChampionData '%s' at %s."), *AssetName, *AssetPath);
+			return;
+		}
+
+		AChampionBase* Champion = World->SpawnActor<AChampionBase>();
+		if (!Champion)
+		{
+			UE_LOG(LogTemp, Error, TEXT("SpawnChampion: failed to spawn AChampionBase."));
+			return;
+		}
+
+		Champion->InitializeFromChampionData(Data);
+		Champion->SnapToHex(Coord);
+		Grid->SetOccupant(Coord, Champion);
+
+		UE_LOG(LogTemp, Display, TEXT("SpawnChampion: spawned '%s' at %s."), *AssetName, *Coord.ToString());
+	}
+
 	void DebugCoordOverlay(const TArray<FString>& Args, UWorld* World)
 	{
 		if (!World)
@@ -133,6 +189,12 @@ static FAutoConsoleCommandWithWorldAndArgs SetSpawnFlagCommand(
 	TEXT("SetSpawnFlag"),
 	TEXT("SetSpawnFlag <q> <r> <0|1> - debug-only toggle of a tile's spawn flag."),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugSetSpawnFlag)
+);
+
+static FAutoConsoleCommandWithWorldAndArgs SpawnChampionCommand(
+	TEXT("SpawnChampion"),
+	TEXT("SpawnChampion <DataAssetName> <q> <r> - debug-only: spawns a champion directly onto a hex, bypassing the shop and bench."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugSpawnChampion)
 );
 
 static FAutoConsoleCommandWithWorldAndArgs DebugCoordOverlayCommand(
