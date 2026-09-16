@@ -9,6 +9,8 @@
 
 class UHexGrid;
 class AHexGridVisualizer;
+class ABoardUnitBase;
+enum class EHexTileVisualState : uint8;
 
 /**
  * Owns cursor-to-hex resolution (PLAN.md 3.2), the shared basis for 3.3's hover feedback and
@@ -35,11 +37,30 @@ private:
 	void UpdateHoveredHex();
 	void ApplyHoverVisual(bool bHadPreviousHex, const FHexCoord& PreviousHex, bool bHasNewHex, const FHexCoord& NewHex);
 
+	/** ValidPlacement/InvalidPlacement per HexGrid::CanPlaceAt (PLAN.md 5.1). */
+	EHexTileVisualState GetPlacementVisualState(const FHexCoord& Coord) const;
+
+	/** ValidPlacementHovered/InvalidPlacementHovered - the "you are here" variant applied only to
+	 * the hex under the cursor while dragging, layered on top of the board-wide preview. */
+	EHexTileVisualState GetHoveredPlacementVisualState(const FHexCoord& Coord) const;
+
+	/** Recolors every tile to its placement-validity state - the TFT-style "light up the legal
+	 * zone" moment when a drag begins (PLAN.md 5.2). */
+	void ShowPlacementPreview();
+
+	/** Reverts every tile to its resting PlayerZone/EnemyZone state, then reapplies plain Hovered
+	 * to whatever's under the cursor so ordinary 3.3 hover feedback resumes immediately. */
+	void ClearPlacementPreview();
+
+	/** True if the hovered hex is a legal drop target for the unit currently being dragged - the
+	 * board-level CanPlaceAt check, gating the drop rather than only coloring it (PLAN.md 5.3). */
+	bool CanDropOnHoveredHex() const;
+
 	/** Deprojects the mouse and intersects the board's ground plane (Z=0) analytically - not a
 	 * line trace, per the grid-is-data invariant. False if the cursor doesn't hit the plane. */
 	bool DeprojectCursorToGroundPlane(FVector& OutHitPoint) const;
 
-	/** Moves the carried actor to follow the cursor - the only per-tick part of dragging left;
+	/** Moves the carried unit to follow the cursor - the only per-tick part of dragging left;
 	 * press/release/cancel are all event-driven, bound in SetupInputComponent. */
 	void UpdateDragFollow();
 
@@ -47,14 +68,13 @@ private:
 	void OnSelectReleased();
 	void OnCancelDrag();
 
-	void BeginDrag(AActor* Target);
+	void BeginDrag(ABoardUnitBase* Unit);
 	void EndDrag(bool bCancel);
 
-	/** Repositions the dragged actor with an immediate physics/collision sync (TeleportPhysics),
-	 * rather than letting a physics-enabled component (e.g. a skeletal mesh's physics asset)
-	 * potentially lag a frame behind a plain SetActorLocation. Cheap defensive correctness, not
-	 * a fix for anything currently reproduced - the actual re-pick bug turned out to be the
-	 * input mode (see BeginPlay). */
+	/** Repositions the dragged unit with an immediate physics/collision sync (TeleportPhysics),
+	 * rather than letting a physics-enabled component potentially lag a frame behind a plain
+	 * SetActorLocation. Used only by UpdateDragFollow's per-tick cursor-following - landing at the
+	 * end of a drag goes through ABoardUnitBase::SnapToHex instead (see EndDrag). */
 	static void TeleportActor(AActor* Actor, const FVector& NewLocation);
 
 	TWeakObjectPtr<UHexGrid> HexGrid;
@@ -63,11 +83,15 @@ private:
 	bool bHasHoveredHex = false;
 	FHexCoord HoveredHex;
 
-	// PLAN.md 3.4: any actor tagged "Draggable" can be picked up. No ABoardUnitBase/Occupant
-	// interaction here - that needs task 4.2 and Phase 5's real placement rules. This is purely
-	// the input mechanic, tested against a placeholder actor.
-	TWeakObjectPtr<AActor> DraggedActor;
-	FVector DragOriginalLocation = FVector::ZeroVector;
+	// PLAN.md 5.3: only a Player-team ABoardUnitBase can be picked up - checked by type in
+	// OnSelectPressed, not by tag. The 3.4 placeholder actor is no longer draggable now that this
+	// reads real board state.
+	TWeakObjectPtr<ABoardUnitBase> DraggedUnit;
+
+	// Captured in BeginDrag, which also clears this tile's Occupant immediately - lifting a unit
+	// frees its hex right away (TFT-accurate), so dropping it back on itself is an ordinary valid
+	// placement rather than a special case, and EndDrag lands here on a cancel.
+	FHexCoord DragOriginCoord;
 
 	// Screen-space mouse position when the actor was picked up, used on release to tell a real
 	// drag from a click-to-pick-up: moved past DragThresholdPixels means "drop now," otherwise

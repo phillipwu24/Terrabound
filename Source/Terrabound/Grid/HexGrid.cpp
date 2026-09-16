@@ -107,6 +107,16 @@ bool UHexGrid::SetSpawnFlag(const FHexCoord& Coord, bool bEnabled)
 	return true;
 }
 
+bool UHexGrid::CanPlaceAt(const FHexCoord& Coord) const
+{
+	const FHexTile* Tile = GetTile(Coord);
+	if (!Tile)
+	{
+		return false;
+	}
+	return Tile->bIsPlaceable && !Tile->bIsSpawn && !Tile->Occupant.IsValid();
+}
+
 TArray<FHexCoord> UHexGrid::GetPlayerZoneTiles() const
 {
 	TArray<FHexCoord> Result;

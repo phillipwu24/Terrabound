@@ -22,7 +22,13 @@ enum class EHexTileVisualState : uint8
 	Hovered,
 	ValidPlacement,
 	InvalidPlacement,
-	Occupied
+	Occupied,
+
+	// Appended, not inserted: the cursor's hex during a drag (PLAN.md 5.2 follow-on), layered on
+	// top of ValidPlacement/InvalidPlacement's board-wide preview. New values go at the end so the
+	// numeric contract above (already wired into M_HexTile's if-chain) never shifts.
+	ValidPlacementHovered,
+	InvalidPlacementHovered
 };
 
 /**

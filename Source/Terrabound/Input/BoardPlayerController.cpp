@@ -3,9 +3,9 @@
 #include "BoardPlayerController.h"
 #include "../Grid/HexGrid.h"
 #include "../Grid/HexGridVisualizer.h"
+#include "../Units/BoardUnitBase.h"
 #include "Engine/Engine.h"
 #include "EngineUtils.h"
-#include "GameFramework/CharacterMovementComponent.h"
 
 void ABoardPlayerController::BeginPlay()
 {
@@ -127,6 +127,23 @@ void ABoardPlayerController::ApplyHoverVisual(bool bHadPreviousHex, const FHexCo
 		return;
 	}
 
+	if (DraggedUnit.IsValid())
+	{
+		// The board is already showing its board-wide placement-validity colors
+		// (ShowPlacementPreview, PLAN.md 5.2) - drop the previously-hovered hex back to that plain
+		// state and lift the newly-hovered one to its brighter "you are here" variant, instead of
+		// the ordinary plain-Hovered swap below.
+		if (bHadPreviousHex)
+		{
+			Vis->SetTileVisualState(PreviousHex, GetPlacementVisualState(PreviousHex));
+		}
+		if (bHasNewHex)
+		{
+			Vis->SetTileVisualState(NewHex, GetHoveredPlacementVisualState(NewHex));
+		}
+		return;
+	}
+
 	if (bHadPreviousHex)
 	{
 		Vis->SetTileVisualState(PreviousHex, Vis->GetBaseVisualState(PreviousHex));
@@ -134,6 +151,56 @@ void ABoardPlayerController::ApplyHoverVisual(bool bHadPreviousHex, const FHexCo
 	if (bHasNewHex)
 	{
 		Vis->SetTileVisualState(NewHex, EHexTileVisualState::Hovered);
+	}
+}
+
+EHexTileVisualState ABoardPlayerController::GetPlacementVisualState(const FHexCoord& Coord) const
+{
+	const UHexGrid* Grid = HexGrid.Get();
+	const bool bCanPlace = Grid && Grid->CanPlaceAt(Coord);
+	return bCanPlace ? EHexTileVisualState::ValidPlacement : EHexTileVisualState::InvalidPlacement;
+}
+
+EHexTileVisualState ABoardPlayerController::GetHoveredPlacementVisualState(const FHexCoord& Coord) const
+{
+	const UHexGrid* Grid = HexGrid.Get();
+	const bool bCanPlace = Grid && Grid->CanPlaceAt(Coord);
+	return bCanPlace ? EHexTileVisualState::ValidPlacementHovered : EHexTileVisualState::InvalidPlacementHovered;
+}
+
+void ABoardPlayerController::ShowPlacementPreview()
+{
+	AHexGridVisualizer* Vis = Visualizer.Get();
+	const UHexGrid* Grid = HexGrid.Get();
+	if (!Vis || !Grid)
+	{
+		return;
+	}
+
+	for (const FHexCoord& Coord : Grid->GetAllTileCoords())
+	{
+		Vis->SetTileVisualState(Coord, GetPlacementVisualState(Coord));
+	}
+}
+
+void ABoardPlayerController::ClearPlacementPreview()
+{
+	AHexGridVisualizer* Vis = Visualizer.Get();
+	const UHexGrid* Grid = HexGrid.Get();
+	if (!Vis || !Grid)
+	{
+		return;
+	}
+
+	for (const FHexCoord& Coord : Grid->GetAllTileCoords())
+	{
+		Vis->SetTileVisualState(Coord, Vis->GetBaseVisualState(Coord));
+	}
+
+	// Resume ordinary hover feedback immediately rather than waiting for the next hex change.
+	if (bHasHoveredHex)
+	{
+		Vis->SetTileVisualState(HoveredHex, EHexTileVisualState::Hovered);
 	}
 }
 
@@ -146,9 +213,15 @@ bool ABoardPlayerController::GetHoveredHex(FHexCoord& OutCoord) const
 	return bHasHoveredHex;
 }
 
+bool ABoardPlayerController::CanDropOnHoveredHex() const
+{
+	const UHexGrid* Grid = HexGrid.Get();
+	return bHasHoveredHex && Grid && Grid->CanPlaceAt(HoveredHex);
+}
+
 void ABoardPlayerController::UpdateDragFollow()
 {
-	if (!DraggedActor.IsValid())
+	if (!DraggedUnit.IsValid())
 	{
 		return;
 	}
@@ -156,33 +229,39 @@ void ABoardPlayerController::UpdateDragFollow()
 	FVector HitPoint;
 	if (DeprojectCursorToGroundPlane(HitPoint))
 	{
-		// HitPoint.Z is always 0 (the ground plane) - keep the actor at its original height so a
-		// pivot that isn't at ground level (e.g. a character's) doesn't sink during the drag.
-		TeleportActor(DraggedActor.Get(), FVector(HitPoint.X, HitPoint.Y, DragOriginalLocation.Z));
+		// Board units always sit at Z=0 (ABoardUnitBase::SnapToHex) - no need to preserve a
+		// captured height.
+		TeleportActor(DraggedUnit.Get(), FVector(HitPoint.X, HitPoint.Y, 0.f));
 	}
 }
 
 void ABoardPlayerController::OnSelectPressed()
 {
-	if (!DraggedActor.IsValid())
+	if (!DraggedUnit.IsValid())
 	{
-		// Not carrying - a left-click press on a Draggable-tagged actor picks it up.
+		// Not carrying - a left-click press on a Player-team board unit picks it up.
 		FHitResult Hit;
-		if (GetHitResultUnderCursor(ECC_Visibility, false, Hit) && Hit.GetActor() && Hit.GetActor()->ActorHasTag(TEXT("Draggable")))
+		if (GetHitResultUnderCursor(ECC_Visibility, false, Hit))
 		{
-			BeginDrag(Hit.GetActor());
+			if (ABoardUnitBase* Unit = Cast<ABoardUnitBase>(Hit.GetActor()))
+			{
+				if (Unit->GetTeam() == EBoardUnitTeam::Player)
+				{
+					BeginDrag(Unit);
+				}
+			}
 		}
 		return;
 	}
 
 	// Already carrying (from an earlier click-to-pick-up that stayed attached to the cursor -
 	// see OnSelectReleased): a fresh press now is "click again to drop."
-	EndDrag(/*bCancel=*/!bHasHoveredHex);
+	EndDrag(/*bCancel=*/!CanDropOnHoveredHex());
 }
 
 void ABoardPlayerController::OnSelectReleased()
 {
-	if (!DraggedActor.IsValid())
+	if (!DraggedUnit.IsValid())
 	{
 		return;
 	}
@@ -193,9 +272,9 @@ void ABoardPlayerController::OnSelectReleased()
 
 	if (MovedPixels > DragThresholdPixels)
 	{
-		// Moved enough to count as a real drag - this release is the drop (dropped on a valid
-		// hex snaps to it; dropped off-board cancels).
-		EndDrag(/*bCancel=*/!bHasHoveredHex);
+		// Moved enough to count as a real drag - this release is the drop (dropped on a legal
+		// hex commits; dropped off-board or on an illegal hex cancels).
+		EndDrag(/*bCancel=*/!CanDropOnHoveredHex());
 	}
 	// Otherwise this was a click, not a drag: stay carried, following the cursor until a second
 	// click drops it (OnSelectPressed, above).
@@ -203,51 +282,55 @@ void ABoardPlayerController::OnSelectReleased()
 
 void ABoardPlayerController::OnCancelDrag()
 {
-	if (DraggedActor.IsValid())
+	if (DraggedUnit.IsValid())
 	{
 		EndDrag(/*bCancel=*/true);
 	}
 }
 
-void ABoardPlayerController::BeginDrag(AActor* Target)
+void ABoardPlayerController::BeginDrag(ABoardUnitBase* Unit)
 {
-	DraggedActor = Target;
-	DragOriginalLocation = Target->GetActorLocation();
+	DraggedUnit = Unit;
+	DragOriginCoord = Unit->GetCurrentCoord();
 	GetMousePosition(PressStartMousePos.X, PressStartMousePos.Y);
 
-	// A placeholder like the Paragon character has its own CharacterMovementComponent, which
-	// simulates gravity every tick. Once we start driving its position directly via
-	// SetActorLocation, that component fights us (a teleport reads as "now airborne," so it
-	// starts falling from wherever we last placed it) - disable it so we're the only thing
-	// moving this actor. Fine here since this is a position-driven placeholder, not a real
-	// physics actor; real champions (task 4.2+) won't carry this component at all.
-	if (UCharacterMovementComponent* Movement = Target->FindComponentByClass<UCharacterMovementComponent>())
+	// Lifting a unit frees its hex immediately (TFT-accurate) - this is also what lets dropping
+	// it back on itself take the ordinary commit path in EndDrag rather than a special case.
+	if (UHexGrid* Grid = HexGrid.Get())
 	{
-		Movement->DisableMovement();
+		Grid->ClearOccupant(DragOriginCoord);
+	}
+
+	ShowPlacementPreview();
+
+	// Paint the cursor's starting hex with its "you are here" variant immediately - otherwise it
+	// would show plain ValidPlacement/InvalidPlacement until the cursor next moves to a new hex.
+	if (AHexGridVisualizer* Vis = bHasHoveredHex ? Visualizer.Get() : nullptr)
+	{
+		Vis->SetTileVisualState(HoveredHex, GetHoveredPlacementVisualState(HoveredHex));
 	}
 }
 
 void ABoardPlayerController::EndDrag(bool bCancel)
 {
-	AActor* Actor = DraggedActor.Get();
-	if (!Actor)
+	ABoardUnitBase* Unit = DraggedUnit.Get();
+	if (!Unit)
 	{
 		return;
 	}
 
-	if (bCancel)
-	{
-		TeleportActor(Actor, DragOriginalLocation);
-	}
-	else
-	{
-		const UHexGrid* Grid = HexGrid.Get();
-		const float HexRadius = Grid ? Grid->GetHexRadius() : 0.f;
-		const FVector2D SnapPos = UHexCoordinateLibrary::AxialToWorld2D(HoveredHex, HexRadius);
-		TeleportActor(Actor, FVector(SnapPos.X, SnapPos.Y, DragOriginalLocation.Z));
-	}
+	// A cancel lands back on the hex it was lifted from; a commit lands on the hovered hex,
+	// which CanDropOnHoveredHex has already confirmed is legal by this point.
+	const FHexCoord Destination = bCancel ? DragOriginCoord : HoveredHex;
 
-	DraggedActor = nullptr;
+	if (UHexGrid* Grid = HexGrid.Get())
+	{
+		Grid->SetOccupant(Destination, Unit);
+	}
+	Unit->SnapToHex(Destination);
+
+	DraggedUnit = nullptr;
+	ClearPlacementPreview();
 }
 
 void ABoardPlayerController::TeleportActor(AActor* Actor, const FVector& NewLocation)

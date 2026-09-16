@@ -52,6 +52,15 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Hex Grid")
 	TArray<FHexCoord> GetPlayerZoneTiles() const;
 
+	/**
+	 * True only when Coord is on the board, in the placeable (player) zone, not a spawn tile,
+	 * and unoccupied. This is a pure grid-level check with no pathfinding — the terrain
+	 * checkpoint's PlacementValidator (Terrain/) additionally asks whether placement seals the
+	 * board, which needs A*; the two are not unified. See PLAN.md 5.1.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Hex Grid")
+	bool CanPlaceAt(const FHexCoord& Coord) const;
+
 	/** Total generated tile count. Derived read, not new state. */
 	UFUNCTION(BlueprintPure, Category = "Hex Grid")
 	int32 GetTileCount() const { return Tiles.Num(); }
