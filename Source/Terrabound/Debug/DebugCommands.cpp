@@ -149,6 +149,42 @@ namespace
 		UE_LOG(LogTemp, Display, TEXT("SpawnChampion: spawned '%s' at %s."), *AssetName, *Coord.ToString());
 	}
 
+	void DebugOccupancy(const TArray<FString>& Args, UWorld* World)
+	{
+		const UHexGrid* Grid = World ? World->GetSubsystem<UHexGrid>() : nullptr;
+		if (!Grid)
+		{
+			UE_LOG(LogTemp, Error, TEXT("DebugOccupancy: no HexGrid subsystem for this world."));
+			return;
+		}
+
+		int32 Count = 0;
+		for (const FHexCoord& Coord : Grid->GetAllTileCoords())
+		{
+			const FHexTile* Tile = Grid->GetTile(Coord);
+			ABoardUnitBase* Occupant = Tile ? Tile->Occupant.Get() : nullptr;
+			if (!Occupant)
+			{
+				continue;
+			}
+
+			// Prefer the champion's authored display name; fall back to the actor's own name for
+			// any other ABoardUnitBase (e.g. a future EnemyBase, which has no ChampionData).
+			FString Label = Occupant->GetName();
+			if (const AChampionBase* Champion = Cast<AChampionBase>(Occupant))
+			{
+				if (const UChampionData* Data = Champion->GetChampionData())
+				{
+					Label = Data->DisplayName.ToString();
+				}
+			}
+
+			UE_LOG(LogTemp, Display, TEXT("Occupied %s: %s"), *Coord.ToString(), *Label);
+			++Count;
+		}
+		UE_LOG(LogTemp, Display, TEXT("DebugOccupancy: %d occupied tile(s)."), Count);
+	}
+
 	void DebugCoordOverlay(const TArray<FString>& Args, UWorld* World)
 	{
 		if (!World)
@@ -195,6 +231,12 @@ static FAutoConsoleCommandWithWorldAndArgs SpawnChampionCommand(
 	TEXT("SpawnChampion"),
 	TEXT("SpawnChampion <DataAssetName> <q> <r> - debug-only: spawns a champion directly onto a hex, bypassing the shop and bench."),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugSpawnChampion)
+);
+
+static FAutoConsoleCommandWithWorldAndArgs DebugOccupancyCommand(
+	TEXT("DebugOccupancy"),
+	TEXT("Lists every occupied hex and its occupant."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugOccupancy)
 );
 
 static FAutoConsoleCommandWithWorldAndArgs DebugCoordOverlayCommand(
