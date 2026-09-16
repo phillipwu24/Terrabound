@@ -61,6 +61,15 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Hex Grid")
 	bool CanPlaceAt(const FHexCoord& Coord) const;
 
+	/**
+	 * As CanPlaceAt, but ignoring occupancy - true for any tile a carried unit may legally be
+	 * dropped onto, whether that lands as a placement (empty) or a swap (occupied by another
+	 * unit). Drag/drop logic decides which of those two a drop onto a true result actually is;
+	 * this only answers "is the tile itself legal." See PLAN.md 5.4.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Hex Grid")
+	bool CanPlaceOrSwapAt(const FHexCoord& Coord) const;
+
 	/** Total generated tile count. Derived read, not new state. */
 	UFUNCTION(BlueprintPure, Category = "Hex Grid")
 	int32 GetTileCount() const { return Tiles.Num(); }

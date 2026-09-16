@@ -37,7 +37,8 @@ private:
 	void UpdateHoveredHex();
 	void ApplyHoverVisual(bool bHadPreviousHex, const FHexCoord& PreviousHex, bool bHasNewHex, const FHexCoord& NewHex);
 
-	/** ValidPlacement/InvalidPlacement per HexGrid::CanPlaceAt (PLAN.md 5.1). */
+	/** ValidPlacement/InvalidPlacement per HexGrid::CanPlaceOrSwapAt - occupied-but-otherwise-legal
+	 * hexes read as valid, since dropping there swaps rather than fails (PLAN.md 5.4). */
 	EHexTileVisualState GetPlacementVisualState(const FHexCoord& Coord) const;
 
 	/** ValidPlacementHovered/InvalidPlacementHovered - the "you are here" variant applied only to
@@ -52,8 +53,10 @@ private:
 	 * to whatever's under the cursor so ordinary 3.3 hover feedback resumes immediately. */
 	void ClearPlacementPreview();
 
-	/** True if the hovered hex is a legal drop target for the unit currently being dragged - the
-	 * board-level CanPlaceAt check, gating the drop rather than only coloring it (PLAN.md 5.3). */
+	/** True if the hovered hex is a legal drop target for the unit currently being dragged -
+	 * gates the drop rather than only coloring it (PLAN.md 5.3). Ignores occupancy
+	 * (CanPlaceOrSwapAt, not CanPlaceAt): dropping on another unit's hex swaps rather than
+	 * fails (PLAN.md 5.4). */
 	bool CanDropOnHoveredHex() const;
 
 	/** Deprojects the mouse and intersects the board's ground plane (Z=0) analytically - not a

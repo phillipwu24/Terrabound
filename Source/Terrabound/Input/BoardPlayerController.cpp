@@ -157,14 +157,14 @@ void ABoardPlayerController::ApplyHoverVisual(bool bHadPreviousHex, const FHexCo
 EHexTileVisualState ABoardPlayerController::GetPlacementVisualState(const FHexCoord& Coord) const
 {
 	const UHexGrid* Grid = HexGrid.Get();
-	const bool bCanPlace = Grid && Grid->CanPlaceAt(Coord);
+	const bool bCanPlace = Grid && Grid->CanPlaceOrSwapAt(Coord);
 	return bCanPlace ? EHexTileVisualState::ValidPlacement : EHexTileVisualState::InvalidPlacement;
 }
 
 EHexTileVisualState ABoardPlayerController::GetHoveredPlacementVisualState(const FHexCoord& Coord) const
 {
 	const UHexGrid* Grid = HexGrid.Get();
-	const bool bCanPlace = Grid && Grid->CanPlaceAt(Coord);
+	const bool bCanPlace = Grid && Grid->CanPlaceOrSwapAt(Coord);
 	return bCanPlace ? EHexTileVisualState::ValidPlacementHovered : EHexTileVisualState::InvalidPlacementHovered;
 }
 
@@ -216,7 +216,7 @@ bool ABoardPlayerController::GetHoveredHex(FHexCoord& OutCoord) const
 bool ABoardPlayerController::CanDropOnHoveredHex() const
 {
 	const UHexGrid* Grid = HexGrid.Get();
-	return bHasHoveredHex && Grid && Grid->CanPlaceAt(HoveredHex);
+	return bHasHoveredHex && Grid && Grid->CanPlaceOrSwapAt(HoveredHex);
 }
 
 void ABoardPlayerController::UpdateDragFollow()
@@ -325,6 +325,17 @@ void ABoardPlayerController::EndDrag(bool bCancel)
 
 	if (UHexGrid* Grid = HexGrid.Get())
 	{
+		// A commit onto an occupied hex swaps the two units (PLAN.md 5.4). BeginDrag already
+		// vacated DragOriginCoord, so on a cancel this can never find anyone else there - the
+		// swap only ever fires for a real commit onto a different, occupied hex.
+		if (const FHexTile* Tile = Grid->GetTile(Destination))
+		{
+			if (ABoardUnitBase* Other = Tile->Occupant.Get())
+			{
+				Grid->SetOccupant(DragOriginCoord, Other);
+				Other->SnapToHex(DragOriginCoord);
+			}
+		}
 		Grid->SetOccupant(Destination, Unit);
 	}
 	Unit->SnapToHex(Destination);
