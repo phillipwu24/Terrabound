@@ -16,6 +16,7 @@
 #include "../Units/ChampionBase.h"
 #include "../Data/ChampionData.h"
 #include "../Economy/EconomyState.h"
+#include "../Economy/ChampionPool.h"
 
 namespace
 {
@@ -197,6 +198,65 @@ namespace
 		UE_LOG(LogTemp, Display, TEXT("Gold: %d"), Economy->GetGold());
 	}
 
+	void DebugRollChampionPool(const TArray<FString>& Args, UWorld* World)
+	{
+		int32 SampleCount = 10000;
+		if (Args.Num() >= 1)
+		{
+			LexTryParseString(SampleCount, *Args[0]);
+		}
+
+		UDataTable* PoolTable = LoadObject<UDataTable>(nullptr, TEXT("/Game/Terrabound/Data/DT_ChampionPool.DT_ChampionPool"));
+		UDataTable* OddsTable = LoadObject<UDataTable>(nullptr, TEXT("/Game/Terrabound/Data/DT_ChampionTierOdds.DT_ChampionTierOdds"));
+		if (!PoolTable || !OddsTable)
+		{
+			UE_LOG(LogTemp, Error, TEXT("DebugRollChampionPool: couldn't load DT_ChampionPool and/or DT_ChampionTierOdds."));
+			return;
+		}
+
+		// Prints each roster row's champion and the Tier ChampionData actually resolves to, so a
+		// skewed distribution can be traced to a specific asset rather than the odds table.
+		TArray<FChampionPoolRow*> DebugRows;
+		PoolTable->GetAllRows<FChampionPoolRow>(TEXT("DebugRollChampionPool"), DebugRows);
+		for (const FChampionPoolRow* Row : DebugRows)
+		{
+			const UChampionData* Data = Row->ChampionData.LoadSynchronous();
+			UE_LOG(LogTemp, Display, TEXT("  Roster: %s tier=%d poolSize=%d"),
+				Data ? *Data->DisplayName.ToString() : TEXT("<unresolved>"),
+				Data ? Data->Tier : -1,
+				Row->PoolSize);
+		}
+
+		// A throwaway pool for sampling only - ShopSystem (6.3) will own the real one. Each draw is
+		// immediately returned so the sample measures configured RollOdds, not pool depletion.
+		UChampionPool* Pool = NewObject<UChampionPool>();
+		Pool->Initialize(PoolTable, OddsTable);
+
+		TMap<int32, int32> TierCounts;
+		int32 Drawn = 0;
+		for (int32 i = 0; i < SampleCount; ++i)
+		{
+			UChampionData* Champion = Pool->DrawRandomChampion();
+			if (!Champion)
+			{
+				continue;
+			}
+			++Drawn;
+			TierCounts.FindOrAdd(Champion->Tier)++;
+			Pool->ReturnChampion(Champion);
+		}
+
+		UE_LOG(LogTemp, Display, TEXT("DebugRollChampionPool: %d/%d draws succeeded."), Drawn, SampleCount);
+		TArray<int32> Tiers;
+		TierCounts.GetKeys(Tiers);
+		Tiers.Sort();
+		for (int32 Tier : Tiers)
+		{
+			const int32 Count = TierCounts[Tier];
+			UE_LOG(LogTemp, Display, TEXT("  Tier %d: %d (%.1f%%)"), Tier, Count, Drawn > 0 ? 100.f * Count / Drawn : 0.f);
+		}
+	}
+
 	void DebugCoordOverlay(const TArray<FString>& Args, UWorld* World)
 	{
 		if (!World)
@@ -255,6 +315,12 @@ static FAutoConsoleCommandWithWorldAndArgs DebugGoldCommand(
 	TEXT("DebugGold"),
 	TEXT("Logs the player's current gold."),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugGold)
+);
+
+static FAutoConsoleCommandWithWorldAndArgs DebugRollChampionPoolCommand(
+	TEXT("DebugRollChampionPool"),
+	TEXT("DebugRollChampionPool [sampleCount=10000] - rolls a throwaway champion pool and logs the tier distribution."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugRollChampionPool)
 );
 
 static FAutoConsoleCommandWithWorldAndArgs DebugCoordOverlayCommand(
