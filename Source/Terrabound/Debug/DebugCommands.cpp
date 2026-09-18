@@ -17,6 +17,8 @@
 #include "../Data/ChampionData.h"
 #include "../Economy/EconomyState.h"
 #include "../Economy/ChampionPool.h"
+#include "../Economy/Bench.h"
+#include "../Economy/BenchVisualizer.h"
 
 namespace
 {
@@ -257,6 +259,87 @@ namespace
 		}
 	}
 
+	void DebugBenchState(const TArray<FString>& Args, UWorld* World)
+	{
+		const UBench* Bench = World ? World->GetSubsystem<UBench>() : nullptr;
+		if (!Bench)
+		{
+			UE_LOG(LogTemp, Error, TEXT("DebugBenchState: no Bench subsystem for this world."));
+			return;
+		}
+
+		for (int32 SlotIndex = 0; SlotIndex < Bench->GetSlotCount(); ++SlotIndex)
+		{
+			const ABoardUnitBase* Occupant = Bench->GetChampionAt(SlotIndex);
+			FString Label = TEXT("<empty>");
+			if (Occupant)
+			{
+				Label = Occupant->GetName();
+				if (const AChampionBase* Champion = Cast<AChampionBase>(Occupant))
+				{
+					if (const UChampionData* Data = Champion->GetChampionData())
+					{
+						Label = Data->DisplayName.ToString();
+					}
+				}
+			}
+			UE_LOG(LogTemp, Display, TEXT("Bench slot %d: %s"), SlotIndex, *Label);
+		}
+	}
+
+	void DebugBenchAdd(const TArray<FString>& Args, UWorld* World)
+	{
+		if (!World)
+		{
+			UE_LOG(LogTemp, Error, TEXT("DebugBenchAdd: no world."));
+			return;
+		}
+		if (Args.Num() < 1)
+		{
+			UE_LOG(LogTemp, Error, TEXT("DebugBenchAdd: usage: DebugBenchAdd <DataAssetName>"));
+			return;
+		}
+
+		UBench* Bench = World->GetSubsystem<UBench>();
+		if (!Bench)
+		{
+			UE_LOG(LogTemp, Error, TEXT("DebugBenchAdd: no Bench subsystem for this world."));
+			return;
+		}
+		if (!Bench->HasFreeSlot())
+		{
+			UE_LOG(LogTemp, Error, TEXT("DebugBenchAdd: bench is full."));
+			return;
+		}
+
+		// Debug only - bypasses the shop entirely, same spirit as SpawnChampion (PLAN.md 4.5).
+		const FString& AssetName = Args[0];
+		const FString AssetPath = FString::Printf(TEXT("/Game/Terrabound/Data/Champions/%s.%s"), *AssetName, *AssetName);
+		UChampionData* Data = LoadObject<UChampionData>(nullptr, *AssetPath);
+		if (!Data)
+		{
+			UE_LOG(LogTemp, Error, TEXT("DebugBenchAdd: couldn't load ChampionData '%s' at %s."), *AssetName, *AssetPath);
+			return;
+		}
+
+		AChampionBase* Champion = World->SpawnActor<AChampionBase>();
+		if (!Champion)
+		{
+			UE_LOG(LogTemp, Error, TEXT("DebugBenchAdd: failed to spawn AChampionBase."));
+			return;
+		}
+		Champion->InitializeFromChampionData(Data);
+		Bench->AddChampion(Champion);
+
+		if (TActorIterator<ABenchVisualizer> It(World); It)
+		{
+			const int32 SlotIndex = Bench->FindSlotIndex(Champion);
+			Champion->SetActorLocation(It->GetSlotTransform(SlotIndex).GetLocation());
+		}
+
+		UE_LOG(LogTemp, Display, TEXT("DebugBenchAdd: added '%s' to the bench."), *AssetName);
+	}
+
 	void DebugCoordOverlay(const TArray<FString>& Args, UWorld* World)
 	{
 		if (!World)
@@ -321,6 +404,18 @@ static FAutoConsoleCommandWithWorldAndArgs DebugRollChampionPoolCommand(
 	TEXT("DebugRollChampionPool"),
 	TEXT("DebugRollChampionPool [sampleCount=10000] - rolls a throwaway champion pool and logs the tier distribution."),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugRollChampionPool)
+);
+
+static FAutoConsoleCommandWithWorldAndArgs DebugBenchStateCommand(
+	TEXT("DebugBenchState"),
+	TEXT("Lists every bench slot and its occupant."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugBenchState)
+);
+
+static FAutoConsoleCommandWithWorldAndArgs DebugBenchAddCommand(
+	TEXT("DebugBenchAdd"),
+	TEXT("DebugBenchAdd <DataAssetName> - debug-only: spawns a champion directly onto the bench, bypassing the shop."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugBenchAdd)
 );
 
 static FAutoConsoleCommandWithWorldAndArgs DebugCoordOverlayCommand(

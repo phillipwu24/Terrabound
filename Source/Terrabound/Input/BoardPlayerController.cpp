@@ -3,6 +3,8 @@
 #include "BoardPlayerController.h"
 #include "../Grid/HexGrid.h"
 #include "../Grid/HexGridVisualizer.h"
+#include "../Economy/Bench.h"
+#include "../Economy/BenchVisualizer.h"
 #include "../Units/BoardUnitBase.h"
 #include "Engine/Engine.h"
 #include "EngineUtils.h"
@@ -23,12 +25,17 @@ void ABoardPlayerController::BeginPlay()
 	SetInputMode(InputMode);
 
 	HexGrid = GetWorld() ? GetWorld()->GetSubsystem<UHexGrid>() : nullptr;
+	Bench = GetWorld() ? GetWorld()->GetSubsystem<UBench>() : nullptr;
 
 	if (UWorld* World = GetWorld())
 	{
 		if (TActorIterator<AHexGridVisualizer> It(World); It)
 		{
 			Visualizer = *It;
+		}
+		if (TActorIterator<ABenchVisualizer> BenchIt(World); BenchIt)
+		{
+			BenchVisualizer = *BenchIt;
 		}
 	}
 }
@@ -37,6 +44,7 @@ void ABoardPlayerController::PlayerTick(float DeltaTime)
 {
 	Super::PlayerTick(DeltaTime);
 	UpdateHoveredHex();
+	UpdateHoveredBenchSlot();
 	UpdateDragFollow();
 }
 
@@ -116,6 +124,24 @@ void ABoardPlayerController::UpdateHoveredHex()
 	if (!bUnchanged)
 	{
 		ApplyHoverVisual(bHadPreviousHex, PreviousHex, bHasHoveredHex, HoveredHex);
+	}
+}
+
+void ABoardPlayerController::UpdateHoveredBenchSlot()
+{
+	bHasHoveredBenchSlot = false;
+	HoveredBenchSlot = INDEX_NONE;
+
+	const ABenchVisualizer* Vis = BenchVisualizer.Get();
+	FVector HitPoint;
+	if (Vis && DeprojectCursorToGroundPlane(HitPoint))
+	{
+		int32 SlotIndex = INDEX_NONE;
+		if (Vis->FindNearestSlot(FVector2D(HitPoint.X, HitPoint.Y), SlotIndex))
+		{
+			bHasHoveredBenchSlot = true;
+			HoveredBenchSlot = SlotIndex;
+		}
 	}
 }
 
@@ -213,10 +239,16 @@ bool ABoardPlayerController::GetHoveredHex(FHexCoord& OutCoord) const
 	return bHasHoveredHex;
 }
 
-bool ABoardPlayerController::CanDropOnHoveredHex() const
+bool ABoardPlayerController::CanCommitDrop() const
 {
-	const UHexGrid* Grid = HexGrid.Get();
-	return bHasHoveredHex && Grid && Grid->CanPlaceOrSwapAt(HoveredHex);
+	if (bHasHoveredHex)
+	{
+		const UHexGrid* Grid = HexGrid.Get();
+		return Grid && Grid->CanPlaceOrSwapAt(HoveredHex);
+	}
+	// A bench slot has no zone/occupancy restriction - it always accepts a drop, whether that
+	// lands as a plain placement or a swap with whoever's already there (see EndDrag).
+	return bHasHoveredBenchSlot;
 }
 
 void ABoardPlayerController::UpdateDragFollow()
@@ -239,7 +271,8 @@ void ABoardPlayerController::OnSelectPressed()
 {
 	if (!DraggedUnit.IsValid())
 	{
-		// Not carrying - a left-click press on a Player-team board unit picks it up.
+		// Not carrying - a left-click press on a Player-team board unit picks it up, wherever it
+		// currently stands (a hex or a bench slot - HitBox pickup detection doesn't care which).
 		FHitResult Hit;
 		if (GetHitResultUnderCursor(ECC_Visibility, false, Hit))
 		{
@@ -256,7 +289,7 @@ void ABoardPlayerController::OnSelectPressed()
 
 	// Already carrying (from an earlier click-to-pick-up that stayed attached to the cursor -
 	// see OnSelectReleased): a fresh press now is "click again to drop."
-	EndDrag(/*bCancel=*/!CanDropOnHoveredHex());
+	EndDrag(/*bCancel=*/!CanCommitDrop());
 }
 
 void ABoardPlayerController::OnSelectReleased()
@@ -273,8 +306,8 @@ void ABoardPlayerController::OnSelectReleased()
 	if (MovedPixels > DragThresholdPixels)
 	{
 		// Moved enough to count as a real drag - this release is the drop (dropped on a legal
-		// hex commits; dropped off-board or on an illegal hex cancels).
-		EndDrag(/*bCancel=*/!CanDropOnHoveredHex());
+		// target commits; dropped off-board and off-bench cancels).
+		EndDrag(/*bCancel=*/!CanCommitDrop());
 	}
 	// Otherwise this was a click, not a drag: stay carried, following the cursor until a second
 	// click drops it (OnSelectPressed, above).
@@ -291,14 +324,28 @@ void ABoardPlayerController::OnCancelDrag()
 void ABoardPlayerController::BeginDrag(ABoardUnitBase* Unit)
 {
 	DraggedUnit = Unit;
-	DragOriginCoord = Unit->GetCurrentCoord();
 	GetMousePosition(PressStartMousePos.X, PressStartMousePos.Y);
 
-	// Lifting a unit frees its hex immediately (TFT-accurate) - this is also what lets dropping
-	// it back on itself take the ordinary commit path in EndDrag rather than a special case.
-	if (UHexGrid* Grid = HexGrid.Get())
+	// Lifting a unit frees its origin immediately (TFT-accurate) - this is also what lets
+	// dropping it back on itself take the ordinary commit path in EndDrag rather than a special
+	// case. A unit currently on the bench is found there first; anything else is assumed to be on
+	// the board, per its own CurrentCoord (same trust level the pre-6.4 code already had here).
+	UBench* BenchSub = Bench.Get();
+	const int32 BenchSlot = BenchSub ? BenchSub->FindSlotIndex(Unit) : INDEX_NONE;
+	if (BenchSlot != INDEX_NONE)
 	{
-		Grid->ClearOccupant(DragOriginCoord);
+		DragOriginKind = EDragLocationKind::BenchSlot;
+		DragOriginBenchSlot = BenchSlot;
+		BenchSub->SetSlot(BenchSlot, nullptr);
+	}
+	else
+	{
+		DragOriginKind = EDragLocationKind::Hex;
+		DragOriginCoord = Unit->GetCurrentCoord();
+		if (UHexGrid* Grid = HexGrid.Get())
+		{
+			Grid->ClearOccupant(DragOriginCoord);
+		}
 	}
 
 	ShowPlacementPreview();
@@ -319,29 +366,73 @@ void ABoardPlayerController::EndDrag(bool bCancel)
 		return;
 	}
 
-	// A cancel lands back on the hex it was lifted from; a commit lands on the hovered hex,
-	// which CanDropOnHoveredHex has already confirmed is legal by this point.
-	const FHexCoord Destination = bCancel ? DragOriginCoord : HoveredHex;
-
-	if (UHexGrid* Grid = HexGrid.Get())
+	// A cancel lands back on wherever it was lifted from; a commit lands on whichever destination
+	// the cursor is over (CanCommitDrop has already confirmed it'll accept the drop).
+	EDragLocationKind DestKind = DragOriginKind;
+	FHexCoord DestCoord = DragOriginCoord;
+	int32 DestBenchSlot = DragOriginBenchSlot;
+	if (!bCancel)
 	{
-		// A commit onto an occupied hex swaps the two units (PLAN.md 5.4). BeginDrag already
-		// vacated DragOriginCoord, so on a cancel this can never find anyone else there - the
-		// swap only ever fires for a real commit onto a different, occupied hex.
-		if (const FHexTile* Tile = Grid->GetTile(Destination))
+		if (bHasHoveredHex)
 		{
-			if (ABoardUnitBase* Other = Tile->Occupant.Get())
-			{
-				Grid->SetOccupant(DragOriginCoord, Other);
-				Other->SnapToHex(DragOriginCoord);
-			}
+			DestKind = EDragLocationKind::Hex;
+			DestCoord = HoveredHex;
 		}
-		Grid->SetOccupant(Destination, Unit);
+		else if (bHasHoveredBenchSlot)
+		{
+			DestKind = EDragLocationKind::BenchSlot;
+			DestBenchSlot = HoveredBenchSlot;
+		}
 	}
-	Unit->SnapToHex(Destination);
+
+	// Whoever currently occupies Destination goes back to Origin - one rule covering board
+	// placement, board<->board swap, and all three bench transitions. BeginDrag already vacated
+	// the origin, so on a cancel (Destination == Origin) this always finds nobody there.
+	if (ABoardUnitBase* Bumped = GetOccupantAt(DestKind, DestCoord, DestBenchSlot))
+	{
+		PlaceUnitAt(Bumped, DragOriginKind, DragOriginCoord, DragOriginBenchSlot);
+	}
+	PlaceUnitAt(Unit, DestKind, DestCoord, DestBenchSlot);
 
 	DraggedUnit = nullptr;
 	ClearPlacementPreview();
+}
+
+ABoardUnitBase* ABoardPlayerController::GetOccupantAt(EDragLocationKind Kind, const FHexCoord& Coord, int32 BenchSlot) const
+{
+	if (Kind == EDragLocationKind::Hex)
+	{
+		const UHexGrid* Grid = HexGrid.Get();
+		const FHexTile* Tile = Grid ? Grid->GetTile(Coord) : nullptr;
+		return Tile ? Tile->Occupant.Get() : nullptr;
+	}
+
+	const UBench* BenchSub = Bench.Get();
+	return BenchSub ? BenchSub->GetChampionAt(BenchSlot) : nullptr;
+}
+
+void ABoardPlayerController::PlaceUnitAt(ABoardUnitBase* Unit, EDragLocationKind Kind, const FHexCoord& Coord, int32 BenchSlot)
+{
+	if (Kind == EDragLocationKind::Hex)
+	{
+		if (UHexGrid* Grid = HexGrid.Get())
+		{
+			Grid->SetOccupant(Coord, Unit);
+		}
+		Unit->SnapToHex(Coord);
+		return;
+	}
+
+	if (UBench* BenchSub = Bench.Get())
+	{
+		BenchSub->SetSlot(BenchSlot, Unit);
+	}
+	if (const ABenchVisualizer* Vis = BenchVisualizer.Get())
+	{
+		// Location only, like SnapToHex - a unit's facing is set once (ChampionBase's "face the
+		// enemy side") and never touched by repositioning, on the board or the bench.
+		Unit->SetActorLocation(Vis->GetSlotTransform(BenchSlot).GetLocation());
+	}
 }
 
 void ABoardPlayerController::TeleportActor(AActor* Actor, const FVector& NewLocation)
