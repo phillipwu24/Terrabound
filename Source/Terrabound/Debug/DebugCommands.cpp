@@ -15,6 +15,7 @@
 #include "../Grid/HexGridVisualizer.h"
 #include "../Units/ChampionBase.h"
 #include "../Data/ChampionData.h"
+#include "../Economy/EconomyState.h"
 
 namespace
 {
@@ -185,6 +186,17 @@ namespace
 		UE_LOG(LogTemp, Display, TEXT("DebugOccupancy: %d occupied tile(s)."), Count);
 	}
 
+	void DebugGold(const TArray<FString>& Args, UWorld* World)
+	{
+		const UEconomyState* Economy = World ? World->GetSubsystem<UEconomyState>() : nullptr;
+		if (!Economy)
+		{
+			UE_LOG(LogTemp, Error, TEXT("DebugGold: no EconomyState subsystem for this world."));
+			return;
+		}
+		UE_LOG(LogTemp, Display, TEXT("Gold: %d"), Economy->GetGold());
+	}
+
 	void DebugCoordOverlay(const TArray<FString>& Args, UWorld* World)
 	{
 		if (!World)
@@ -237,6 +249,12 @@ static FAutoConsoleCommandWithWorldAndArgs DebugOccupancyCommand(
 	TEXT("DebugOccupancy"),
 	TEXT("Lists every occupied hex and its occupant."),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugOccupancy)
+);
+
+static FAutoConsoleCommandWithWorldAndArgs DebugGoldCommand(
+	TEXT("DebugGold"),
+	TEXT("Logs the player's current gold."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugGold)
 );
 
 static FAutoConsoleCommandWithWorldAndArgs DebugCoordOverlayCommand(

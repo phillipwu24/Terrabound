@@ -7,6 +7,7 @@
 #include "TerraboundSettings.generated.h"
 
 class UBoardConfig;
+class UEconomyConfig;
 class UMaterialInterface;
 
 /**
@@ -21,6 +22,12 @@ public:
 	// HexGrid finds DA_BoardConfig through this at generation time (1.4).
 	UPROPERTY(EditAnywhere, config, Category = "Board")
 	TSoftObjectPtr<UBoardConfig> BoardConfig;
+
+	// EconomyState finds DA_EconomyConfig through this at Initialize time (6.1). Later economy
+	// systems (ShopSystem, Bench) resolve the same reference independently rather than going
+	// through EconomyState, same as HexGrid doesn't proxy other subsystems' config reads.
+	UPROPERTY(EditAnywhere, config, Category = "Economy")
+	TSoftObjectPtr<UEconomyConfig> EconomyConfig;
 
 	/**
 	 * BoardUnitBase's team tint hook (4.6) reads these three - one shared source rather than a
