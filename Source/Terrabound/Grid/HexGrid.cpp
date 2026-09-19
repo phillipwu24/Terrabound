@@ -82,6 +82,7 @@ bool UHexGrid::SetOccupant(const FHexCoord& Coord, ABoardUnitBase* Unit)
 		return false;
 	}
 	Tile->Occupant = Unit;
+	OnOccupancyChanged.Broadcast();
 	return true;
 }
 
@@ -93,6 +94,7 @@ bool UHexGrid::ClearOccupant(const FHexCoord& Coord)
 		return false;
 	}
 	Tile->Occupant = nullptr;
+	OnOccupancyChanged.Broadcast();
 	return true;
 }
 

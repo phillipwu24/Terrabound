@@ -41,11 +41,11 @@ void ABoardPlayerController::BeginPlay()
 		}
 	}
 
-	if (ShopWidgetClass)
+	if (HUDWidgetClass)
 	{
-		if (UUserWidget* ShopWidget = CreateWidget<UUserWidget>(this, ShopWidgetClass))
+		if (UUserWidget* HUDWidget = CreateWidget<UUserWidget>(this, HUDWidgetClass))
 		{
-			ShopWidget->AddToViewport();
+			HUDWidget->AddToViewport();
 		}
 	}
 }

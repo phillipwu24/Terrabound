@@ -136,11 +136,12 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Board Player Controller")
 	float DragThresholdPixels = 10.f;
 
-	// PLAN.md 6.5: which widget to spawn and add to viewport on BeginPlay. Left unset here - C++
-	// only knows "spawn whatever's assigned," never the shop's own layout or bindings, per
-	// CLAUDE.md's UI split. EditDefaultsOnly, not EditAnywhere: this is a per-Blueprint default
-	// (which widget class this controller uses), not something a level-placed instance should
-	// override per placement.
-	UPROPERTY(EditDefaultsOnly, Category = "Shop UI")
-	TSubclassOf<UUserWidget> ShopWidgetClass;
+	// PLAN.md 6.5/6.7: which root HUD widget to spawn and add to viewport on BeginPlay. Left
+	// unset here - C++ only knows "spawn whatever's assigned," never any panel's own layout or
+	// bindings, per CLAUDE.md's UI split. A single root widget (WBP_HUD), not one property per
+	// panel - the shop and trait panels are its children, composed in the widget itself, not
+	// spawned/added to viewport independently. EditDefaultsOnly, not EditAnywhere: a per-Blueprint
+	// default, not something a level-placed instance should override per placement.
+	UPROPERTY(EditDefaultsOnly, Category = "HUD")
+	TSubclassOf<UUserWidget> HUDWidgetClass;
 };

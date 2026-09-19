@@ -8,6 +8,8 @@
 #include "HexTile.h"
 #include "HexGrid.generated.h"
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnBoardOccupancyChanged);
+
 /**
  * Owns the board's flat tile array — the only place tile state lives. Generates from
  * DA_BoardConfig (via UTerraboundSettings) on world init. Nothing outside this class may write
@@ -81,6 +83,15 @@ public:
 	/** Hex circumradius in world units, as read from BoardConfig at generation. Derived read. */
 	UFUNCTION(BlueprintPure, Category = "Hex Grid")
 	float GetHexRadius() const { return HexRadius; }
+
+	/**
+	 * Fires whenever SetOccupant/ClearOccupant successfully mutates a tile - every board
+	 * place/remove/swap/sell path already routes through one of the two (PLAN.md 6.7), so this is
+	 * the single correct hook for anything that needs to know "the board changed," without that
+	 * thing needing to know why. No payload - listeners re-query whatever they care about.
+	 */
+	UPROPERTY(BlueprintAssignable, Category = "Hex Grid")
+	FOnBoardOccupancyChanged OnOccupancyChanged;
 
 private:
 	void GenerateGrid();
