@@ -12,6 +12,7 @@ class AHexGridVisualizer;
 class UBench;
 class ABenchVisualizer;
 class ABoardUnitBase;
+class UUserWidget;
 enum class EHexTileVisualState : uint8;
 
 /**
@@ -133,4 +134,12 @@ private:
 
 	UPROPERTY(EditAnywhere, Category = "Board Player Controller")
 	float DragThresholdPixels = 10.f;
+
+	// PLAN.md 6.5: which widget to spawn and add to viewport on BeginPlay. Left unset here - C++
+	// only knows "spawn whatever's assigned," never the shop's own layout or bindings, per
+	// CLAUDE.md's UI split. EditDefaultsOnly, not EditAnywhere: this is a per-Blueprint default
+	// (which widget class this controller uses), not something a level-placed instance should
+	// override per placement.
+	UPROPERTY(EditDefaultsOnly, Category = "Shop UI")
+	TSubclassOf<UUserWidget> ShopWidgetClass;
 };

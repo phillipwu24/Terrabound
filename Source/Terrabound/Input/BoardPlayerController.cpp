@@ -8,6 +8,7 @@
 #include "../Units/BoardUnitBase.h"
 #include "Engine/Engine.h"
 #include "EngineUtils.h"
+#include "Blueprint/UserWidget.h"
 
 void ABoardPlayerController::BeginPlay()
 {
@@ -36,6 +37,14 @@ void ABoardPlayerController::BeginPlay()
 		if (TActorIterator<ABenchVisualizer> BenchIt(World); BenchIt)
 		{
 			BenchVisualizer = *BenchIt;
+		}
+	}
+
+	if (ShopWidgetClass)
+	{
+		if (UUserWidget* ShopWidget = CreateWidget<UUserWidget>(this, ShopWidgetClass))
+		{
+			ShopWidget->AddToViewport();
 		}
 	}
 }
