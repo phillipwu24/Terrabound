@@ -9,6 +9,7 @@
 class UBoardConfig;
 class UEconomyConfig;
 class UMaterialInterface;
+class UDataTable;
 
 /**
  * Project-wide settings, editable from Project Settings without touching a level.
@@ -28,6 +29,14 @@ public:
 	// through EconomyState, same as HexGrid doesn't proxy other subsystems' config reads.
 	UPROPERTY(EditAnywhere, config, Category = "Economy")
 	TSoftObjectPtr<UEconomyConfig> EconomyConfig;
+
+	// UShopSystem's UChampionPool (6.3) resolves these two through here rather than a hardcoded
+	// content path, same reasoning as BoardConfig/EconomyConfig above.
+	UPROPERTY(EditAnywhere, config, Category = "Economy")
+	TSoftObjectPtr<UDataTable> ChampionPoolTable;
+
+	UPROPERTY(EditAnywhere, config, Category = "Economy")
+	TSoftObjectPtr<UDataTable> ChampionTierOddsTable;
 
 	/**
 	 * BoardUnitBase's team tint hook (4.6) reads these three - one shared source rather than a

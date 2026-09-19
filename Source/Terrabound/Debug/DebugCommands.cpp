@@ -19,6 +19,7 @@
 #include "../Economy/ChampionPool.h"
 #include "../Economy/Bench.h"
 #include "../Economy/BenchVisualizer.h"
+#include "../Economy/ShopSystem.h"
 
 namespace
 {
@@ -340,6 +341,64 @@ namespace
 		UE_LOG(LogTemp, Display, TEXT("DebugBenchAdd: added '%s' to the bench."), *AssetName);
 	}
 
+	void DebugShopDump(const TArray<FString>& Args, UWorld* World)
+	{
+		const UShopSystem* Shop = World ? World->GetSubsystem<UShopSystem>() : nullptr;
+		if (!Shop)
+		{
+			UE_LOG(LogTemp, Error, TEXT("DebugShopDump: no ShopSystem subsystem for this world."));
+			return;
+		}
+
+		for (int32 SlotIndex = 0; SlotIndex < Shop->GetSlotCount(); ++SlotIndex)
+		{
+			const UChampionData* Data = Shop->GetChampionAt(SlotIndex);
+			UE_LOG(LogTemp, Display, TEXT("Shop slot %d: %s"), SlotIndex,
+				Data ? *Data->DisplayName.ToString() : TEXT("<empty>"));
+		}
+	}
+
+	void DebugShopReroll(const TArray<FString>& Args, UWorld* World)
+	{
+		UShopSystem* Shop = World ? World->GetSubsystem<UShopSystem>() : nullptr;
+		if (!Shop)
+		{
+			UE_LOG(LogTemp, Error, TEXT("ShopReroll: no ShopSystem subsystem for this world."));
+			return;
+		}
+
+		if (!Shop->Reroll())
+		{
+			UE_LOG(LogTemp, Error, TEXT("ShopReroll: reroll failed (insufficient gold?)."));
+			return;
+		}
+		UE_LOG(LogTemp, Display, TEXT("ShopReroll: rerolled."));
+	}
+
+	void DebugShopBuy(const TArray<FString>& Args, UWorld* World)
+	{
+		UShopSystem* Shop = World ? World->GetSubsystem<UShopSystem>() : nullptr;
+		if (!Shop)
+		{
+			UE_LOG(LogTemp, Error, TEXT("ShopBuy: no ShopSystem subsystem for this world."));
+			return;
+		}
+
+		int32 SlotIndex = 0;
+		if (Args.Num() < 1 || !LexTryParseString(SlotIndex, *Args[0]))
+		{
+			UE_LOG(LogTemp, Error, TEXT("ShopBuy: usage: ShopBuy <slotIndex>"));
+			return;
+		}
+
+		if (!Shop->Buy(SlotIndex))
+		{
+			UE_LOG(LogTemp, Error, TEXT("ShopBuy: buy failed (empty slot, insufficient gold, or full bench)."));
+			return;
+		}
+		UE_LOG(LogTemp, Display, TEXT("ShopBuy: bought slot %d."), SlotIndex);
+	}
+
 	void DebugCoordOverlay(const TArray<FString>& Args, UWorld* World)
 	{
 		if (!World)
@@ -416,6 +475,24 @@ static FAutoConsoleCommandWithWorldAndArgs DebugBenchAddCommand(
 	TEXT("DebugBenchAdd"),
 	TEXT("DebugBenchAdd <DataAssetName> - debug-only: spawns a champion directly onto the bench, bypassing the shop."),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugBenchAdd)
+);
+
+static FAutoConsoleCommandWithWorldAndArgs DebugShopDumpCommand(
+	TEXT("DebugShopDump"),
+	TEXT("Lists every shop slot and its champion."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugShopDump)
+);
+
+static FAutoConsoleCommandWithWorldAndArgs ShopRerollCommand(
+	TEXT("ShopReroll"),
+	TEXT("Rerolls the shop: returns current slots to the pool and draws fresh ones at RerollCost gold."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugShopReroll)
+);
+
+static FAutoConsoleCommandWithWorldAndArgs ShopBuyCommand(
+	TEXT("ShopBuy"),
+	TEXT("ShopBuy <slotIndex> - buys the champion in that shop slot onto the bench."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugShopBuy)
 );
 
 static FAutoConsoleCommandWithWorldAndArgs DebugCoordOverlayCommand(
