@@ -9,6 +9,7 @@
 class UChampionData;
 class UChampionPool;
 class UEconomyConfig;
+class ABoardUnitBase;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnShopChanged);
 
@@ -64,6 +65,15 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Shop")
 	bool Buy(int32 SlotIndex);
+
+	/**
+	 * Sells Unit: refunds SellRefundPercentage of its tier cost, returns its ChampionData to the
+	 * pool, and destroys the actor. Fails cleanly if Unit isn't a champion. Does not touch HexGrid
+	 * or Bench - by the time a unit can be sold it's being carried (PLAN.md 6.6: sell is
+	 * carry-then-press-a-key), and BeginDrag already vacated its origin tile/slot on pickup.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Shop")
+	bool Sell(ABoardUnitBase* Unit);
 
 	UPROPERTY(BlueprintAssignable, Category = "Shop")
 	FOnShopChanged OnShopChanged;

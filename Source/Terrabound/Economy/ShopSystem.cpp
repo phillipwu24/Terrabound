@@ -135,3 +135,25 @@ bool UShopSystem::Buy(int32 SlotIndex)
 	OnShopChanged.Broadcast();
 	return true;
 }
+
+bool UShopSystem::Sell(ABoardUnitBase* Unit)
+{
+	const AChampionBase* Champion = Cast<AChampionBase>(Unit);
+	UChampionData* Data = Champion ? Champion->GetChampionData() : nullptr;
+	if (!Data || !Config || !Pool)
+	{
+		return false;
+	}
+
+	UEconomyState* Economy = GetWorld() ? GetWorld()->GetSubsystem<UEconomyState>() : nullptr;
+	if (!Economy)
+	{
+		return false;
+	}
+
+	const int32 Refund = FMath::RoundToInt(Config->GetCostForTier(Data->Tier) * Config->SellRefundPercentage);
+	Economy->Add(Refund);
+	Pool->ReturnChampion(Data);
+	Unit->Destroy();
+	return true;
+}

@@ -399,6 +399,74 @@ namespace
 		UE_LOG(LogTemp, Display, TEXT("ShopBuy: bought slot %d."), SlotIndex);
 	}
 
+	void DebugSellHex(const TArray<FString>& Args, UWorld* World)
+	{
+		UHexGrid* Grid = World ? World->GetSubsystem<UHexGrid>() : nullptr;
+		UShopSystem* Shop = World ? World->GetSubsystem<UShopSystem>() : nullptr;
+		if (!Grid || !Shop)
+		{
+			UE_LOG(LogTemp, Error, TEXT("DebugSellHex: no HexGrid/ShopSystem subsystem for this world."));
+			return;
+		}
+
+		int32 Q = 0, R = 0;
+		if (Args.Num() < 2 || !LexTryParseString(Q, *Args[0]) || !LexTryParseString(R, *Args[1]))
+		{
+			UE_LOG(LogTemp, Error, TEXT("DebugSellHex: usage: DebugSellHex <q> <r>"));
+			return;
+		}
+
+		const FHexCoord Coord(Q, R);
+		const FHexTile* Tile = Grid->GetTile(Coord);
+		ABoardUnitBase* Occupant = Tile ? Tile->Occupant.Get() : nullptr;
+		if (!Occupant)
+		{
+			UE_LOG(LogTemp, Error, TEXT("DebugSellHex: %s has no occupant."), *Coord.ToString());
+			return;
+		}
+
+		Grid->ClearOccupant(Coord);
+		if (!Shop->Sell(Occupant))
+		{
+			UE_LOG(LogTemp, Error, TEXT("DebugSellHex: sell failed (not a champion?)."));
+			return;
+		}
+		UE_LOG(LogTemp, Display, TEXT("DebugSellHex: sold occupant of %s."), *Coord.ToString());
+	}
+
+	void DebugSellBench(const TArray<FString>& Args, UWorld* World)
+	{
+		UBench* Bench = World ? World->GetSubsystem<UBench>() : nullptr;
+		UShopSystem* Shop = World ? World->GetSubsystem<UShopSystem>() : nullptr;
+		if (!Bench || !Shop)
+		{
+			UE_LOG(LogTemp, Error, TEXT("DebugSellBench: no Bench/ShopSystem subsystem for this world."));
+			return;
+		}
+
+		int32 SlotIndex = 0;
+		if (Args.Num() < 1 || !LexTryParseString(SlotIndex, *Args[0]))
+		{
+			UE_LOG(LogTemp, Error, TEXT("DebugSellBench: usage: DebugSellBench <slotIndex>"));
+			return;
+		}
+
+		ABoardUnitBase* Occupant = Bench->GetChampionAt(SlotIndex);
+		if (!Occupant)
+		{
+			UE_LOG(LogTemp, Error, TEXT("DebugSellBench: slot %d has no occupant."), SlotIndex);
+			return;
+		}
+
+		Bench->SetSlot(SlotIndex, nullptr);
+		if (!Shop->Sell(Occupant))
+		{
+			UE_LOG(LogTemp, Error, TEXT("DebugSellBench: sell failed (not a champion?)."));
+			return;
+		}
+		UE_LOG(LogTemp, Display, TEXT("DebugSellBench: sold occupant of slot %d."), SlotIndex);
+	}
+
 	void DebugCoordOverlay(const TArray<FString>& Args, UWorld* World)
 	{
 		if (!World)
@@ -493,6 +561,18 @@ static FAutoConsoleCommandWithWorldAndArgs ShopBuyCommand(
 	TEXT("ShopBuy"),
 	TEXT("ShopBuy <slotIndex> - buys the champion in that shop slot onto the bench."),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugShopBuy)
+);
+
+static FAutoConsoleCommandWithWorldAndArgs DebugSellHexCommand(
+	TEXT("DebugSellHex"),
+	TEXT("DebugSellHex <q> <r> - debug-only: sells the champion occupying that hex."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugSellHex)
+);
+
+static FAutoConsoleCommandWithWorldAndArgs DebugSellBenchCommand(
+	TEXT("DebugSellBench"),
+	TEXT("DebugSellBench <slotIndex> - debug-only: sells the champion in that bench slot."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugSellBench)
 );
 
 static FAutoConsoleCommandWithWorldAndArgs DebugCoordOverlayCommand(

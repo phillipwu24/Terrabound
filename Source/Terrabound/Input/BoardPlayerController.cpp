@@ -5,6 +5,7 @@
 #include "../Grid/HexGridVisualizer.h"
 #include "../Economy/Bench.h"
 #include "../Economy/BenchVisualizer.h"
+#include "../Economy/ShopSystem.h"
 #include "../Units/BoardUnitBase.h"
 #include "Engine/Engine.h"
 #include "EngineUtils.h"
@@ -75,6 +76,7 @@ void ABoardPlayerController::SetupInputComponent()
 	InputComponent->BindAction(TEXT("Select"), IE_DoubleClick, this, &ABoardPlayerController::OnSelectPressed);
 	InputComponent->BindAction(TEXT("Select"), IE_Released, this, &ABoardPlayerController::OnSelectReleased);
 	InputComponent->BindAction(TEXT("CancelDrag"), IE_Pressed, this, &ABoardPlayerController::OnCancelDrag);
+	InputComponent->BindAction(TEXT("Sell"), IE_Pressed, this, &ABoardPlayerController::OnSellPressed);
 }
 
 bool ABoardPlayerController::DeprojectCursorToGroundPlane(FVector& OutHitPoint) const
@@ -327,6 +329,25 @@ void ABoardPlayerController::OnCancelDrag()
 	if (DraggedUnit.IsValid())
 	{
 		EndDrag(/*bCancel=*/true);
+	}
+}
+
+void ABoardPlayerController::OnSellPressed()
+{
+	if (!DraggedUnit.IsValid())
+	{
+		return;
+	}
+
+	// Bypasses EndDrag/PlaceUnitAt entirely - there's no destination to land on, and BeginDrag
+	// already vacated the unit's origin tile/bench slot on pickup (PLAN.md 6.6).
+	ABoardUnitBase* Unit = DraggedUnit.Get();
+	DraggedUnit = nullptr;
+	ClearPlacementPreview();
+
+	if (UShopSystem* Shop = GetWorld() ? GetWorld()->GetSubsystem<UShopSystem>() : nullptr)
+	{
+		Shop->Sell(Unit);
 	}
 }
 
