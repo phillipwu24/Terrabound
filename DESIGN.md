@@ -576,6 +576,14 @@ becomes a GameplayEffect applied to every unit carrying the matching tag. This i
 close to how TFT works internally, and hand-rolling an equivalent later is
 miserable. Do not build a parallel trait system alongside it.
 
+**A trait counts distinct champions, not bodies**, as in TFT. Champion identity is
+its `ChampionData` asset, so two Gruxes are one Bruiser; the bonus itself still
+applies to every unit carrying the tag. That makes thresholds a roster-size
+question: "7 Woodland" needs seven *different* Woodland champions, so threshold
+values must be set against the roster that exists, not against an ideal one. Every
+copy of a champion is still a body, so a wall of identical cheap tanks stays a
+legitimate blocker — it just adds no trait count.
+
 **Mana maps cleanly.** TFT units gain mana on attack and on damage taken, then
 cast at a threshold — an attribute with two gain sources and an ability with a
 cost. Standard GAS shape.

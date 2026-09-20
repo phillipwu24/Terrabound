@@ -641,8 +641,10 @@ any board-refresh or wave-reset path that destroys and recreates champions.
 **Editor:** the panel widget bound to it.
 
 Panel listing the two trait tags and how many board champions carry each. **Board only — bench
-champions do not count**, as in TFT. Implemented as a **tag count across the board**, which is the
-same mechanism thresholds will use later. No thresholds, no effects, no unlocks.
+champions do not count**, as in TFT. **Distinct champions only**, also as in TFT: champion identity
+is its `ChampionData` asset, so two Gruxes are one Bruiser. Implemented as a **tag count across the
+board**, which is the same mechanism thresholds will use later. No thresholds, no effects, no
+unlocks.
 **Done when:** counts update live on place, remove, swap, and sell, and moving a champion to the
 bench decrements its traits.
 
@@ -710,31 +712,35 @@ confirm buying is blocked. Sell from both bench and board. Watch trait counts th
 
 ## Definition of done
 
-- [ ] 7×8 pointy-top board renders with correct odd-r staggering
-- [ ] Grid is a flat data array; nothing queries actors for tile state
-- [ ] Coordinate round-trip and neighbour-symmetry tests pass on both row parities
-- [ ] `bIsWalkable` and `Occupant` are independent; placement never touches walkability
-- [ ] `FHexTile` compiles on a forward declaration; no stub `ABoardUnitBase`, no `AActor` placeholder
-- [ ] Spawn-rejection test uses a placeable-zone fixture, so it fails if the guard is removed
-- [ ] Player zone (35 hexes) derived from config, not hardcoded
-- [ ] Camera frames all 56 hexes legibly at default zoom
-- [ ] Mouse hover resolves to the correct hex anywhere on the board, with no traces
-- [ ] No line traces against tile or unit actors anywhere in the input path
-- [ ] Click-and-drag placement with valid/invalid preview
-- [ ] 3–4 Paragon champions spawn, scale correctly, and idle on hexes
-- [ ] Traits are GameplayTags; trait counts are tag counts
-- [ ] Shop rolls, rerolls, buys, and sells against `EconomyState`
-- [ ] Buying lands a champion on the bench; no code path spawns one onto a hex
-- [ ] A full bench blocks buying, legibly
-- [ ] Champions can be placed, repositioned, swapped, benched, and sold
-- [ ] Bench works in all three drag directions; bench champions excluded from trait counts
-- [ ] `Bench` owns the slot array; `ShopSystem` holds no bench state
-- [ ] All economy numbers live in one file, marked placeholder, including shop slots, bench
-      slots, and the tier cost table
-- [ ] Champion cost derives from tier; no `Cost` field on `ChampionData`
-- [ ] `HexRadius` was set against a real Paragon character before the board was built
+- [x] 7×8 pointy-top board renders with correct odd-r staggering
+- [x] Grid is a flat data array; nothing queries actors for tile state
+- [x] Coordinate round-trip and neighbour-symmetry tests pass on both row parities
+- [x] `bIsWalkable` and `Occupant` are independent; placement never touches walkability
+- [x] `FHexTile` compiles on a forward declaration; no stub `ABoardUnitBase`, no `AActor` placeholder
+- [x] Spawn-rejection test uses a placeable-zone fixture, so it fails if the guard is removed
+- [x] Player zone (35 hexes) derived from config, not hardcoded
+- [x] Camera frames all 56 hexes legibly at default zoom
+- [x] Mouse hover resolves to the correct hex anywhere on the board, with no traces
+- [x] No line traces for tile state anywhere in the input path. The one trace is unit pickup
+      (`BoardPlayerController::OnSelectPressed`, against the unit's `HitBox`), which reads which unit
+      was clicked and never tile state; hover and drag-follow use the ground-plane intersection
+- [x] Click-and-drag placement with valid/invalid preview
+- [x] 3–4 Paragon champions spawn, scale correctly, and idle on hexes
+- [x] Traits are GameplayTags; trait counts are tag counts
+- [x] Shop rolls, rerolls, buys, and sells against `EconomyState`
+- [x] Buying lands a champion on the bench; no code path spawns one onto a hex
+- [x] A full bench blocks buying, legibly
+- [x] Champions can be placed, repositioned, swapped, benched, and sold
+- [x] Bench works in all three drag directions; bench champions excluded from trait counts
+- [x] `Bench` owns the slot array; `ShopSystem` holds no bench state
+- [x] All economy numbers live in `EconomyConfig`, marked placeholder, including shop slots, bench
+      slots, and the tier cost table. The exception is roll odds and pool sizes, which live in
+      `DT_ChampionTierOdds` and `DT_ChampionPool` so retuning a tier's odds is one row (6.2)
+- [x] Champion cost derives from tier; no `Cost` field on `ChampionData`
+- [x] `HexRadius` was set against a real Paragon character before the board was built (110, in
+      `DA_BoardConfig`)
 - [x] Board crossing time measured and recorded
-- [ ] No GAS, no AttributeSet, no AbilitySystemComponent anywhere
+- [x] No GAS, no AttributeSet, no AbilitySystemComponent anywhere
 
 ---
 

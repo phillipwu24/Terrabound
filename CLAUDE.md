@@ -157,6 +157,12 @@ every unit carrying the matching tag. Do not build a parallel trait system. This
 holds from the first line of trait code, before GAS itself exists — GameplayTags
 is a separate, cheap module and is in use during Checkpoint 1.
 
+**A trait counts distinct champions, not bodies, as in TFT.** Champion identity is
+its `ChampionData` asset: two Gruxes are one Bruiser. Only the *count* is distinct —
+a trait bonus still applies to every unit carrying the tag, copies included.
+Thresholds are therefore set against the roster size: a threshold above the number
+of distinct champions carrying the trait can never be reached.
+
 **Untargetable is a tag** (`State.Untargetable`). The targeting scan filters on
 it. This is the general lock-break mechanism — stealth, blinks, and anything
 later just apply the tag.

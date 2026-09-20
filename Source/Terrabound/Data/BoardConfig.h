@@ -29,7 +29,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Board")
 	int32 PlaceableRowCount = 5;
 
-	/** Hex circumradius in world units. Placeholder until task 0.6 sets it against a real character. */
+	/**
+	 * Hex circumradius in world units. Set against a real Paragon character in task 0.6; DA_BoardConfig
+	 * holds 110. This default only applies to a freshly created asset.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Board")
 	float HexRadius = 100.f;
 
