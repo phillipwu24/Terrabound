@@ -85,7 +85,8 @@ enemies across the board** — without the bar. That pull is what gives terrain 
 leverage; see "Why terrain needs a destination" below.
 
 Implement as a single virtual goal node with zero-cost edges from every back-row
-hex, so the A* stays an ordinary single-target search. All 56 hexes stay playable.
+hex, so the exit is one source for the distance search rather than eight targets.
+All 56 hexes stay playable.
 
 **Instrument it from the start.** Count leaks per wave and cumulatively, and log
 which enemy type leaked. Those numbers are what tell you whether leak damage is
@@ -100,7 +101,13 @@ even the right difficulty lever, and they can't be guessed from a document.
 - Enemies get 3 free rows before entering player territory.
 - Do **not** hardcode the zone depth. It is the first dial to turn if the board
   feels cramped or permissive.
-- No unit cap for now. Revisit if traits become trivially maxable.
+- **A cap on units placed on the board is planned; the value, and how it is
+  calculated, are undecided.** It is one of the two levers (with slow, sparse
+  spawning) that keep battles small-scale — see "Blocking model". A row is 7 wide,
+  so a cap of 6 or less makes a full unit-only wall impossible. Bench champions do
+  not count toward it. Swaps never change the board count, so they are always
+  allowed; only bench→empty hex is subject to the cap, and the drag preview shows
+  hexes invalid once the board is full.
 
 ### Spawn hexes
 
@@ -115,24 +122,47 @@ Spawn hexes are never placeable. Keep per-tile flags independent: `is_spawn`,
 
 ### Blocking model
 
-The two hooks stay distinct:
+Two hooks, priced differently:
 
-| | Blocks pathing? | Role |
+| | Effect on pathing | Role |
 |---|---|---|
-| **Terrain** | Yes — impassable in A* | Shapes the route |
-| **Units** | No — enemies path through and engage when in aggro range | Deals the damage |
+| **Terrain** | Impassable | Shapes the route |
+| **Units** (champions and enemies alike) | Passable to the search at one flat, high cost | Deals the damage; occupies its hex |
 
-If units were hard blocks, players would maze with bodies and terrain would be
-redundant.
+The cost is a routing preference, not a wall. Enemies flow through any gap in
+preference to a unit's hex; where a wall leaves no gap, the search routes through
+it. The enemy walks up, cannot enter (one unit per hex), and aggro makes it fight
+the blocker. "Break the wall or kill a unit" falls out of rules already in place,
+and a sealed board needs no "no route exists" special case.
 
-**One unit per hex, though.** Blocking and occupancy are separate rules and it is
-worth being explicit that both hold. An enemy may walk *through* a hex a champion
-stands on; it may not *stop* there. Nothing stacks — one champion or one enemy per
-tile, never two.
+**The cost is flat.** Every occupied hex costs the same — it never reads HP, tier,
+or side — so routing never funnels the wave into whichever part of the wall is
+cheapest to hit. Which unit an enemy fights is decided by aggro (nearest by path
+length, within range), not by routing. One consequence, accepted: depth counts, so
+a wall one unit thick in one place and two thick in another draws the approach
+toward the thin spot until a champion comes into range; aggro takes over at
+range 1–2.
 
-The two rules pull in different directions only if you read "doesn't block" as
-"doesn't exist". A unit is a thing standing in a place. It doesn't obstruct
-routing, but the place is taken.
+**Why units block.** The earlier rule was that units did not affect pathing. It
+was replaced because it required an enemy to walk *into* a hex it is not allowed to
+enter, and because the worry it guarded against — mazing with bodies — is bounded
+here. The board is 7 wide (it mazes nothing, see "Why terrain needs a
+destination"), a unit cap is planned, and battles are meant to be small-scale with
+slow spawning, so a board clogged with bodies should not arise. Terrain keeps its
+own job: it picks the lane, costs no unit slot, and cannot be killed by the wave.
+
+**One unit per hex, always.** Blocking and occupancy are separate rules. The
+search *prices* an occupied hex; the step *enforces* occupancy — a unit never
+enters an occupied hex, whatever the search planned. Nothing stacks: one champion
+or one enemy per tile, never two.
+
+**Movement is decided one hex at a time.** Units keep no route. On arriving at a
+hex an enemy chooses its next, and aggro takes precedence: with a target in range
+it stops and attacks; with a target out of range it steps toward a free hex within
+range of it; with none it steps toward the exit. "Toward" means lower *path*
+distance from a search over the tile array — not raw hex distance, which stalls
+behind terrain. Nothing is cached, so nothing goes stale when a hex fills or a tree
+falls.
 
 **When the hex it wants to stop on is taken, it moves to another hex that still
 has its target in range.** If no such hex is free, it falls through to the
@@ -344,8 +374,8 @@ odds they live to cast at all. That matters — terrain-immune assassins would b
 hard counter to the Woodland build with no answer.
 
 **Watch for the inert assassin.** The self-leap fallback means a board with no
-free hex in leap range turns the cast into nothing at all. With no unit cap, a
-late-game board that is simply *full* gets that for free, without the player ever
+free hex in leap range turns the cast into nothing at all. With no unit cap
+yet (one is planned), a late-game board that is simply *full* gets that for free, without the player ever
 deciding to bodyblock. If assassins stop being a threat exactly when boards fill
 up, the fallback is doing too much work and the cast should probably do something
 on a failed landing — damage where it stands, or a shorter hop. Playtest question,
@@ -356,7 +386,7 @@ early enemy. First enemies are dumber than this.
 
 ### Consequence to watch (Step 3)
 
-Units are hard stops that don't block pathing. An enemy that acquires a target
+Units are hard stops. An enemy that acquires a target
 stops and fights until one of them dies — so a single cheap unit anywhere along
 the route halts every regular enemy that comes into its range.
 
@@ -772,7 +802,8 @@ each step exists and still governs everything `PLAN.md` has not reached.
 
 The one thing the reorder puts at risk is Step 1's payload — board crossing time,
 the number every other number is tuned against. `PLAN.md` preserves it with a
-debug path walker: A* across the grid, no AI, no combat, no enemy class.
+debug walker: it steps hex by hex across the grid via the pathfinder, no AI, no
+combat, no enemy class.
 
 **Step 1 — One enemy walking to the exit.**
 No units, no shop, no combat. Spawn point, pathfinding across the hex grid, reach
@@ -802,9 +833,10 @@ surprise you.
 
 ### Technical notes
 
-**Grid A*, not NavMesh.** Hex-based blocking and dynamic terrain placement want
-deterministic tile costs, and NavMesh rebuilds mid-wave are a headache worth
-avoiding.
+**Grid pathfinding, not NavMesh.** Hex-based blocking and dynamic terrain and
+occupancy want deterministic tile costs, and NavMesh rebuilds mid-wave are a
+headache worth avoiding. The search runs as a distance query over the tile array
+and is consulted one step at a time; "A*" elsewhere in these docs means it.
 
 **The grid is data, not actors.** A flat array of tile structs — coordinate,
 walkable flag, occupant reference, terrain reference, path cost. Visual hex
@@ -812,11 +844,12 @@ meshes read from it; pathfinding never touches an actor. This is the decision
 that hurts most to reverse: if pathing queries actors, you end up doing traces
 mid-wave and the terrain system gets welded to rendering.
 
-**Path invalidation.** Paths are stable through a wave except when terrain is
-destroyed. Give each enemy a cached path and a dirty flag; when a tree dies, flip
-the flag on everyone and recompute next tick rather than recomputing per-enemy on
-the spot. Cheap either way at 56 tiles, but the pattern holds up if the board
-grows.
+**No stored paths.** Enemies keep no route. Each arrival on a hex re-asks the
+distance search for the next step, so there is nothing to invalidate when terrain
+is destroyed or a hex fills — the next arrival simply sees the new board. One
+search per arrival is cheap at 56 tiles; if it ever isn't, share one search across
+every enemy heading for the exit. Do not build a path cache or dirty flag until
+measurement says so.
 
 ---
 
@@ -836,8 +869,8 @@ If they do, two dials in order of preference:
 Don't pre-solve this. Just don't hardcode the zone depth.
 
 **Does one cheap unit trivialize a wave?**
-Units are hard stops that don't block pathing, so a single unit in range halts
-every regular enemy that reaches it. Step 3 answers whether that's a satisfying
+Units are hard stops, so a single unit in range halts every regular enemy that
+reaches it. Step 3 answers whether that's a satisfying
 time-buying strategy or a degenerate one. With no ranged enemy archetype, a wall
 of cheap tanks is the specific version to watch, and assassins are currently the
 only answer to it.

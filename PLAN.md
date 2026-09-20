@@ -50,14 +50,17 @@ need a trace, the tile struct is missing a field.
 **Pointy-top, odd-r offset, parity fixed once.** This plan locks **odd rows shift right (+X)**.
 Never flip it.
 
-**Units do not block pathing; terrain does.** No pathing exists yet, but this fixes the data
-model: `Occupant` and `bIsWalkable` are **independent fields**. Do not write
-`bIsWalkable = Occupant == nullptr`. It is convenient now and it destroys the terrain hook later.
+**Terrain blocks pathing outright; units block it at a flat cost.** Pathing arrives in 7.1. The
+data model is unchanged: `Occupant` and `bIsWalkable` are **independent fields**. Do not write
+`bIsWalkable = Occupant == nullptr`. It is convenient and it destroys the terrain hook. The
+pathfinder reads both: not walkable is impassable; occupied is passable to the search at one flat
+cost, the same for every unit (never HP, tier, or team).
 
 **One unit per tile.** `Occupant` is a single reference, not a list. Champions and enemies both
-occupy exclusively — no stacking. This does not contradict the invariant above: a path may cross
-an occupied tile, but a unit may not stop on one. Placement (5.1) enforces this; movement will
-inherit it in a later checkpoint.
+occupy exclusively — no stacking. This does not contradict the invariant above: the search may
+route through an occupied tile at a cost, but a unit never *enters* one — the occupancy check on
+the step enforces it. Placement (5.1) enforces this for placement; the 7.1 walker inherits it for
+movement.
 
 **Per-tile flags independent:** `bIsSpawn`, `bIsPlaceable`, `bIsWalkable`, plus occupant and
 terrain refs.
@@ -78,7 +81,7 @@ every champion stat in 4.3, camera zoom and pitch, drag thresholds, and the spaw
 occupant — get setters and pure getters instead. If a variable's side of that line is unclear,
 ask rather than guessing.
 
-**Grid A*, not NavMesh.** Applies to task 7.1.
+**Grid pathfinding, not NavMesh.** Applies to task 7.1.
 
 **Traits are GameplayTags.** Not `FName`, not an enum, not a string. See Phase 0.3.
 
@@ -88,7 +91,8 @@ stats are stored on `ChampionData` as **initialization data for a future Attribu
 values, read by nothing, feeding a GAS AttributeSet in a later checkpoint. Do not build a
 stat system that GAS will later have to displace.
 
-**No unit cap.** `DESIGN.md` explicitly defers it.
+**No unit cap this checkpoint.** A cap on units placed is planned, value undecided, and belongs to
+the enemy checkpoint. Do not add a cap check to placement and do not invent a number.
 
 **Buying puts a champion on the bench, never on the board.** Every champion reaches a hex by being
 dragged there. The only exception is the debug console command in 4.5. Bench slots are not hexes
@@ -282,9 +286,9 @@ forbids) and **do not weaken the type to `AActor`** as a placeholder — that pl
 tightened back up.
 
 `Occupant` is a single reference because **one unit stands on a tile at a time**, champion or
-enemy, no stacking. It is not a list. Per `CLAUDE.md`, occupiable and passable are separate
-questions: `bIsWalkable` says a path may cross the tile, `Occupant == nullptr` says a unit may
-stand on it.
+enemy, no stacking. It is not a list. Per `CLAUDE.md`, occupiable and walkable are separate
+questions: `bIsWalkable` says terrain permits a path across the tile, `Occupant == nullptr` says a
+unit may stand on it.
 
 **Done when:** compiles with only a forward declaration; occupancy and walkability are separate
 fields.
@@ -537,7 +541,7 @@ during the drag, not only on release.
 ### 5.3 Commit placement  
 **[C++]**
 On valid drop: set the tile's `Occupant`, clear the origin tile, move the actor to the new centre.
-`bIsWalkable` is **not** touched — units do not block.
+`bIsWalkable` is **not** touched — occupancy is its own field, and the pathfinder prices it.
 **Done when:** grid data and visual position never disagree, verified with the 1.5 dump.
 
 ### 5.4 Repositioning and swap  
@@ -648,27 +652,43 @@ bench decrements its traits.
 
 ### 7.1 `HexPathfinder` and debug walker (`Pathfinding/`)  
 **[C++ + Editor]**
-**C++:** A*, the virtual goal node, the walker, and crossing-time logging.  
+**C++:** the distance search, the virtual goal node, the next-step choice, the walker, and
+crossing-time logging.  
 **Editor:** a placeholder capsule and a level with spawn tiles flagged.
 
-Hand-rolled A* over the tile array. Grid A*, not NavMesh.
+Hand-rolled search over the tile array, run as a distance query. Grid pathfinding, not NavMesh.
 
 Per `CLAUDE.md`, enemies path to **a single virtual goal node with zero-cost edges from every
-back-row hex**, so the search stays an ordinary single-target A*. Implement the goal node now — it
+back-row hex**, so the exit is one source for the search rather than eight targets. Dijkstra
+outward from it gives every tile its path distance to the exit. Implement the goal node now — it
 is three lines and it keeps the search shape correct from the start.
 
 The goal is an **exit**, not a crystal: reaching the back row means leaving the board. There is no
 objective actor to build, now or later. The leak counter that eventually hangs off this arrives
 with the enemy checkpoint; do not add it here.
 
-A debug capsule spawns on a far-edge hex, follows the path centre-to-centre at a configurable
-speed, and despawns at the goal. **No combat, no AI, no `EnemyBase` class, no targeting.**
-Champion-occupied hexes are **passable at no extra cost** — this is the units-don't-block invariant
-and this is the moment to verify it holds.
+**Cost function.** Per `CLAUDE.md`: a tile with `bIsWalkable == false` is impassable. An occupied
+tile is passable to the search at **one flat, high cost**, identical for every unit — never read
+HP, tier, or team. That cost is a tuning value and is exposed on a config asset (which one is
+settled in the 7.1 plan). Terrain does not exist yet, so this checkpoint only exercises the
+occupied-tile half.
 
-Log the crossing time.
-**Done when:** the walker crosses the board and the crossing time is written down. That number is
-what the next checkpoint's tuning starts from.
+**One hex at a time, no stored path.** A debug capsule spawns on a far-edge hex. Each time it
+arrives on a hex it asks the pathfinder for its next one: the neighbour with the lowest distance to
+the goal, ties arbitrary. It moves centre-to-centre to that hex at a configurable speed and
+despawns at the goal. It never enters an occupied hex — if the chosen hex is occupied it holds and
+logs. **No combat, no AI, no `EnemyBase` class, no targeting, no path cache.** The capsule is not
+an `ABoardUnitBase` and takes no occupancy.
+
+Log the crossing time, measured on an **empty board**, spawn to despawn.
+
+**Also verify, with `SpawnChampion` (4.5):** a single champion in the walker's lane makes it route
+around; a full row of champions makes it walk up to the wall and hold there without entering an
+occupied hex. This is the flat-cost rule doing its job before any aggro exists.
+
+**Done when:** the walker crosses the empty board and the crossing time is written down, and the
+two occupied-hex checks above behave as described. That number is what the next checkpoint's
+tuning starts from.
 
 ### 7.2 Full-loop smoke test  
 **[Editor]**
@@ -716,8 +736,8 @@ Enemies, `EnemyBase`, `EnemyAssassin`. Assassin leaps, mana. Enemy range values.
 `TargetableInterface`, aggro, target locking, `State.Untargetable`. GAS in any form — AttributeSet,
 AbilitySystemComponent, GameplayEffects, abilities. Waves, `WaveManager`, `WaveDefinition`,
 scouting. Terrain, trees, `TerrainPieceBase`, `PlacementValidator`, seal prevention. Trait thresholds or effects. Path
-caching and dirty-flag invalidation (7.1 recomputes each spawn; that is fine at 56 tiles). Any
-objective actor, HP crystal, or nexus — the design has none. Persistent damage, healing.
+caching and dirty-flag invalidation (7.1 recomputes on every hex arrival; that is fine at 56 tiles).
+The unit cap. Any objective actor, HP crystal, or nexus — the design has none. Persistent damage, healing.
 Checkmate, score. Augments, items, bosses,
 mid-combat repositioning, enemy-side terrain, depth-based stat bonuses, stat degradation, traits
 beyond the two in MVP scope. Save/load. Audio. Textures, VFX. LODs and performance work.

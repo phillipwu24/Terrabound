@@ -86,31 +86,53 @@ against each other, laid out like the TFT board. Which parity shifts right is
 fixed once and never changes — every neighbor lookup depends on it. Currently
 locked to **odd rows shift right (+X)**.
 
-**Terrain blocks pathing. Units do not.** Terrain is impassable in the A* cost
-function. Enemies path *through* a unit's hex and engage when a player unit
-enters their aggro range — not on adjacency. A ranged enemy stops several hexes
-short of the unit it acquired. Keeping these distinct is load-bearing: if units hard-block, players maze with bodies and
-terrain becomes redundant. Concretely: `Occupant` and `bIsWalkable` are
-independent fields. Never derive one from the other.
+**Terrain blocks pathing outright. Units block it at a flat cost.** Terrain is
+impassable in the pathfinding cost function. An occupied hex — champion or enemy —
+is passable to the *search* but carries one flat, high cost, identical for every
+unit: it never reads HP, tier, stats, or team. The cost only steers route choice.
+Enemies flow through any gap before they route through a unit, and where a wall
+leaves no gap the search routes through it. High cost rather than impassable is
+deliberate: a sealed wall then needs no "no route exists" special case — the enemy
+walks up, cannot enter the occupied hex, and aggro makes it attack the blocker.
+What stops an enemy at a unit is aggro (see Targeting) — range, not adjacency; a
+range-2 enemy stops two hexes short of the unit it acquired — and, physically, the
+occupancy check on the step. Concretely: `Occupant` and `bIsWalkable` are
+independent fields. Never derive one from the other; the cost function reads both.
+Because the cost is flat, wall depth counts — an approach is drawn toward the thin
+part of a wall until a champion is in range. Accepted.
 
-**One unit per tile. Passable and occupiable are different questions.** A hex
-holds at most one `ABoardUnitBase` — champion or enemy, no stacking. This does
-not contradict the invariant above: an enemy may path *through* a champion's hex
-but may not *stop* on it. `bIsWalkable` answers "can a path cross this tile";
-`Occupant == nullptr` answers "can a unit stand here". Code that conflates the
-two will either let units stack or make units block pathing, and both are wrong.
+**One unit per tile. Priced by the search, enforced by the step.** A hex holds at
+most one `ABoardUnitBase` — champion or enemy, no stacking. The search may route
+through an occupied hex at a cost, but a unit never *enters* one, whatever the
+search planned: the occupancy check on the step (see "Contested hexes") is a hard
+rule. `bIsWalkable` answers "does terrain permit a path across this tile";
+`Occupant == nullptr` answers "can a unit stand here". Code that conflates the two
+will either let units stack or make terrain and units the same thing, and both are
+wrong.
 
 When the tile an enemy wants to stop on is taken, it moves to another tile that
 still has its target in range. If none is free it falls through to the ordinary
 "nothing in range → path to the exit" branch. No special case — an enemy that
 cannot attack is an enemy with no target.
 
+**Movement is decided one hex at a time. Units store no path.** Each time an
+enemy arrives on a hex it chooses the next one, target check first — aggro takes
+precedence. Locked target in range: stop and attack. Locked target out of range:
+step toward a free hex within range of it. No target: step toward the exit.
+"Toward" means lower *path* distance, from a search over the tile array (terrain
+infinite, occupied hex the flat cost) — never raw hex distance, which stalls behind
+terrain. Take the neighbour with the lowest distance; ties are arbitrary (drift is
+accepted, below). Because nothing is cached, nothing goes stale when a hex fills or
+terrain changes.
+
 **Range is measured in hexes.** Store champion and enemy range as a tile count.
 Convert to world units at query time. Never store range in centimeters.
 
-**Grid A*, not NavMesh.** Deterministic tile costs and dynamic terrain placement
-want a hand-rolled A* over the tile array. NavMesh rebuilds mid-wave are a
-headache to avoid.
+**Grid pathfinding, not NavMesh.** Deterministic tile costs and dynamic terrain and
+occupancy want a hand-rolled search over the tile array, run as a distance query
+(Dijkstra outward from the goal, or from a target's attack hexes) and consulted one
+step at a time. "A*" elsewhere in these docs means this search. NavMesh rebuilds
+mid-wave are a headache to avoid.
 
 **The player zone depth is a config value, not a constant.** Currently 5 rows.
 This number will change. Never hardcode it or derive from it. Derive the zone
@@ -159,7 +181,8 @@ nothing. Do not build a runtime stat system that GAS will later have to displace
   what it is has not been decided. Do not add an HP bar, and do not invent a
   penalty — implement the counter and the leak event, and leave the cost off
 - Enemies path to a single virtual goal node with zero-cost edges from every
-  back-row hex, so the A* stays an ordinary single-target search
+  back-row hex, so the exit is one source for the distance search rather than
+  eight targets
 - Player owns the 5 rows nearest the exit = 35 placeable hexes, shared by
   units and terrain. "Front" is from the player's viewpoint and means the
   **high** row indices: rows 3–7, with row 7 the back row adjacent to the
@@ -170,7 +193,14 @@ nothing. Do not build a runtime stat system that GAS will later have to displace
 - Per-tile flags kept independent: `is_spawn`, `is_placeable`, `is_walkable`
 - One unit per tile. `Occupant` is a single reference to `ABoardUnitBase`, which
   is why champions and enemies share that base — one field covers both sides.
-- No unit cap. Revisit only if traits become trivially maxable.
+- **A cap on units placed on the board is planned; its value, and how it is
+  calculated, have not been decided.** Do not add a cap check to placement and do
+  not invent a number until the enemy checkpoint plan settles it. A row is 7 wide,
+  so a cap of 6 or less makes a full unit-only wall impossible — that is the lever.
+  Settled, so it needn't be re-asked: bench champions do not count toward it; a
+  swap (board↔board, or bench→occupied hex) never changes the board count and is
+  always allowed, so only bench→empty hex is subject to the cap; the drag preview
+  should show hexes as invalid once the board is at the cap.
 
 ## Shop and bench
 
@@ -281,8 +311,9 @@ everything `PLAN.md` has not reached.
 
 The one thing the reorder puts at risk is **board crossing time** — the number
 every other number is tuned against. `PLAN.md` task 7.1 preserves it with a debug
-path walker: A* across the grid, no AI, no combat, no `EnemyBase`. That task is
-not optional, and Checkpoint 1 does not close without the number written down.
+walker: steps hex by hex across the grid via the pathfinder, no AI, no combat, no
+`EnemyBase`. That task is not optional, and Checkpoint 1 does not close without the
+number written down.
 
 Do not skip ahead within `PLAN.md`, and do not start work beyond the current
 checkpoint. The plan is rewritten after each checkpoint from what the game
@@ -321,7 +352,7 @@ The table below is the same rule applied per system, not a second rule.
 | C++ | Blueprint |
 |---|---|
 | Tile struct, grid array, board generation | Champion/enemy variants (derive from C++ base) |
-| A*, path caching, invalidation | Ability visuals, VFX, animation graphs |
+| Pathfinding: distance search, next-step choice | Ability visuals, VFX, animation graphs |
 | Targeting, aggro, lock/re-scan | Wave definitions, trait thresholds, tuning |
 | Combat resolution, GAS attribute sets | UI widget layout and binding |
 | Wave spawning, economy state | Level setup, spawn hex configuration |
@@ -361,7 +392,7 @@ should be revised rather than worked around.
 ```
 Source/Terrabound/
 ├── Grid/           HexCoordinates, HexTile, HexGrid, HexGridVisualizer
-├── Pathfinding/    HexPathfinder, PathCache
+├── Pathfinding/    HexPathfinder
 ├── Units/          BoardUnitBase, ChampionBase, EnemyBase, EnemyAssassin
 ├── Combat/         TargetingComponent, TargetableInterface, CombatResolver
 ├── Abilities/      AttributeSet, GameplayEffects, ability base classes
