@@ -17,8 +17,10 @@ score.
 **Engine:** Unreal Engine 5.8
 **Language:** C++ for all logic. Blueprints for data and assembly only.
 **Team:** solo project.
-**Status:** Checkpoint 1 in progress — board, controls, shop, placement. No
-enemies, no combat, no GAS yet. See `PLAN.md`.
+**Status:** Checkpoint 1 complete (2026-09-20) — board, controls, shop, bench,
+placement, trait counter, pathfinder. No enemies, no combat, no GAS yet. The plan
+for the next checkpoint has not been written; do not start enemy or combat work
+until it is. See `PLAN.md`.
 
 ## Build command
 

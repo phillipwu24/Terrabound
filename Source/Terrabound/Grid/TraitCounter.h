@@ -8,7 +8,7 @@
 #include "TraitCounter.generated.h"
 
 /**
- * Answers "how many distinct board champions carry Tag" (PLAN.md 6.7) - a UWorldSubsystem so the future
+ * Answers "how many distinct board champions carry Tag" (PLAN.md 6.7) - a UWorldSubsystem so the
  * trait panel widget can reach it the same way it reaches HexGrid/ShopSystem/EconomyState.
  *
  * Recomputes from HexGrid on every call rather than maintaining a live tally - the board is only
