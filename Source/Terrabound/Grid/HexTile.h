@@ -14,8 +14,9 @@ class ABoardUnitBase;
  * subsystem (e.g. SetSpawnFlag, task 1.6), not by touching this struct directly, which is why
  * nothing here is EditAnywhere or BlueprintReadWrite.
  *
- * bIsWalkable and Occupant are independent: bIsWalkable says a path may cross the tile,
- * Occupant == nullptr says a unit may stand on it. Never derive one from the other.
+ * bIsWalkable and Occupant are independent: bIsWalkable says terrain permits a path across the
+ * tile, Occupant == nullptr says a unit may stand on it. The pathfinder reads both - an occupied
+ * tile is passable to the search at a flat extra cost. Never derive one from the other.
  */
 USTRUCT()
 struct TERRABOUND_API FHexTile
@@ -34,6 +35,6 @@ struct TERRABOUND_API FHexTile
 	// Declared now per the layout in Grid/; stays null all of Checkpoint 1.
 	TWeakObjectPtr<AActor> Terrain;
 
-	// Placeholder uniform cost; nothing tunes this yet.
+	// Base cost to enter this tile, read by HexPathfinder. Uniform for now; nothing varies it yet.
 	float PathCost = 1.f;
 };

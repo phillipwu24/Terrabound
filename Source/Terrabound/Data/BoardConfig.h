@@ -32,4 +32,13 @@ public:
 	/** Hex circumradius in world units. Placeholder until task 0.6 sets it against a real character. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Board")
 	float HexRadius = 100.f;
+
+	/**
+	 * PLACEHOLDER. Flat extra cost, added to a tile's PathCost, for the pathfinder to route through
+	 * an occupied tile (champion or enemy alike - never varies by unit). Must exceed the longest
+	 * possible detour (roughly the tile count) so a gap is always preferred over going through a
+	 * unit. See CLAUDE.md's "Terrain blocks pathing outright. Units block it at a flat cost."
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pathfinding")
+	float OccupiedTileCost = 100.f;
 };

@@ -1,50 +1,14 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "HexGrid.h"
+#include "HexGridTestWorld.h"
 #include "HexCoordinates.h"
 #include "../Units/BoardUnitBase.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Misc/AutomationTest.h"
-#include "Engine/Engine.h"
 #include "Engine/World.h"
-
-namespace HexGridPlacementTests
-{
-	/**
-	 * Scoped throwaway UWorld so a test can get a live, populated UHexGrid subsystem - a
-	 * WorldSubsystem only exists alongside a UWorld, and CanPlaceAt (task 5.1) needs a real
-	 * generated grid rather than pure coordinate math. Reusable by any later test that needs the
-	 * same thing (e.g. Phase 5.3/5.4's commit and swap tests) - extract to a shared header if a
-	 * second test file ends up needing it.
-	 */
-	class FScopedGridWorld
-	{
-	public:
-		FScopedGridWorld()
-		{
-			World = UWorld::CreateWorld(EWorldType::Game, false);
-			WorldContext = &GEngine->CreateNewWorldContext(EWorldType::Game);
-			WorldContext->SetCurrentWorld(World);
-			World->InitializeActorsForPlay(FURL());
-			World->BeginPlay();
-		}
-
-		~FScopedGridWorld()
-		{
-			GEngine->DestroyWorldContext(World);
-			World->DestroyWorld(false);
-		}
-
-		UHexGrid* GetGrid() const { return World->GetSubsystem<UHexGrid>(); }
-		UWorld* GetWorld() const { return World; }
-
-	private:
-		UWorld* World = nullptr;
-		FWorldContext* WorldContext = nullptr;
-	};
-}
 
 /**
  * CanPlaceAt (PLAN.md 5.1): true only for a coord that is on the board, in the placeable zone,
@@ -55,7 +19,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHexGridCanPlaceAtTest, "Terrabound.Grid.HexGri
 
 bool FHexGridCanPlaceAtTest::RunTest(const FString& Parameters)
 {
-	using namespace HexGridPlacementTests;
+	using namespace HexGridTests;
 
 	FScopedGridWorld TestWorld;
 	UHexGrid* Grid = TestWorld.GetGrid();
@@ -106,7 +70,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHexGridCanPlaceOrSwapAtTest, "Terrabound.Grid.
 
 bool FHexGridCanPlaceOrSwapAtTest::RunTest(const FString& Parameters)
 {
-	using namespace HexGridPlacementTests;
+	using namespace HexGridTests;
 
 	FScopedGridWorld TestWorld;
 	UHexGrid* Grid = TestWorld.GetGrid();

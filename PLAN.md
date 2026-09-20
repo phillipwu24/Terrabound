@@ -651,10 +651,11 @@ bench decrements its traits.
 # Phase 7 — Checkpoint validation
 
 ### 7.1 `HexPathfinder` and debug walker (`Pathfinding/`)  
-**[C++ + Editor]**
-**C++:** the distance search, the virtual goal node, the next-step choice, the walker, and
-crossing-time logging.  
-**Editor:** a placeholder capsule and a level with spawn tiles flagged.
+**[C++]**
+The distance search, the virtual goal node, the next-step choice, the walker, and crossing-time
+logging. No editor assets: the walker's capsule stand-in is an engine cylinder, and spawn tiles are
+flagged with the `SetSpawnFlag` console command (a level Blueprint for it would be thrown away when
+the enemy checkpoint brings a per-level spawn array).
 
 Hand-rolled search over the tile array, run as a distance query. Grid pathfinding, not NavMesh.
 
@@ -669,14 +670,15 @@ with the enemy checkpoint; do not add it here.
 
 **Cost function.** Per `CLAUDE.md`: a tile with `bIsWalkable == false` is impassable. An occupied
 tile is passable to the search at **one flat, high cost**, identical for every unit — never read
-HP, tier, or team. That cost is a tuning value and is exposed on a config asset (which one is
-settled in the 7.1 plan). Terrain does not exist yet, so this checkpoint only exercises the
-occupied-tile half.
+HP, tier, or team. That cost is a tuning value, `OccupiedTileCost` on `DA_BoardConfig` (placeholder
+100; it must exceed the longest possible detour so a gap is always preferred). Terrain does not
+exist yet, so this checkpoint only exercises the occupied-tile half.
 
 **One hex at a time, no stored path.** A debug capsule spawns on a far-edge hex. Each time it
 arrives on a hex it asks the pathfinder for its next one: the neighbour with the lowest distance to
-the goal, ties arbitrary. It moves centre-to-centre to that hex at a configurable speed and
-despawns at the goal. It never enters an occupied hex — if the chosen hex is occupied it holds and
+the goal, ties broken at random. It moves centre-to-centre to that hex at a configurable speed —
+in **hexes per second**, not world units, so a `HexRadius` change never retunes it — and despawns
+at the goal. It never enters an occupied hex — if the chosen hex is occupied it holds and
 logs. **No combat, no AI, no `EnemyBase` class, no targeting, no path cache.** The capsule is not
 an `ABoardUnitBase` and takes no occupancy.
 
@@ -689,6 +691,13 @@ occupied hex. This is the flat-cost rule doing its job before any aggro exists.
 **Done when:** the walker crosses the empty board and the crossing time is written down, and the
 two occupied-hex checks above behave as described. That number is what the next checkpoint's
 tuning starts from.
+
+**Result (2026-09-20).** The empty-board crossing is 7 hexes. At **2 hexes/s**, the speed picked by
+eye after watching the walker at several speeds, that is **3.5 s** spawn to despawn (7 ÷ 2). It is a
+starting point, not a tuned value: the next checkpoint's per-enemy speed lives on `EnemyData`, and
+this is what to seed it from. Both occupied-hex checks behaved as described in PIE — a lone
+champion is routed around, and a full row makes the walker hold at the wall — and
+`Terrabound.Pathfinding.HexPathfinder.*` covers the same rules headlessly.
 
 ### 7.2 Full-loop smoke test  
 **[Editor]**
@@ -724,7 +733,7 @@ confirm buying is blocked. Sell from both bench and board. Watch trait counts th
       slots, and the tier cost table
 - [ ] Champion cost derives from tier; no `Cost` field on `ChampionData`
 - [ ] `HexRadius` was set against a real Paragon character before the board was built
-- [ ] Board crossing time measured and recorded
+- [x] Board crossing time measured and recorded
 - [ ] No GAS, no AttributeSet, no AbilitySystemComponent anywhere
 
 ---

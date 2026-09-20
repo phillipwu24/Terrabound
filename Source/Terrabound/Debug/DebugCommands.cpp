@@ -20,9 +20,14 @@
 #include "../Economy/Bench.h"
 #include "../Economy/BenchVisualizer.h"
 #include "../Economy/ShopSystem.h"
+#include "DebugPathWalker.h"
 
 namespace
 {
+	// PLACEHOLDER, debug-only default, picked by eye in 7.1. A real per-enemy speed lands on
+	// EnemyData in the enemy checkpoint; this and the crossing time in PLAN.md are its starting point.
+	constexpr float DefaultWalkerHexesPerSecond = 2.f;
+
 	void DebugPing()
 	{
 		UE_LOG(LogTemp, Log, TEXT("Terrabound debug commands are online."));
@@ -152,6 +157,50 @@ namespace
 		Grid->SetOccupant(Coord, Champion);
 
 		UE_LOG(LogTemp, Display, TEXT("SpawnChampion: spawned '%s' at %s."), *AssetName, *Coord.ToString());
+	}
+
+	void DebugSpawnPathWalker(const TArray<FString>& Args, UWorld* World)
+	{
+		if (!World)
+		{
+			UE_LOG(LogTemp, Error, TEXT("SpawnPathWalker: no world."));
+			return;
+		}
+
+		int32 Q = 0, R = 0;
+		float HexesPerSecond = DefaultWalkerHexesPerSecond;
+		const bool bParsedCoord = Args.Num() >= 2 && LexTryParseString(Q, *Args[0]) && LexTryParseString(R, *Args[1]);
+		const bool bParsedSpeed = Args.Num() < 3 || LexTryParseString(HexesPerSecond, *Args[2]);
+		if (!bParsedCoord || !bParsedSpeed || HexesPerSecond <= 0.f)
+		{
+			UE_LOG(LogTemp, Error, TEXT("SpawnPathWalker: usage: SpawnPathWalker <q> <r> [hexesPerSecond > 0]"));
+			return;
+		}
+
+		const UHexGrid* Grid = World->GetSubsystem<UHexGrid>();
+		if (!Grid)
+		{
+			UE_LOG(LogTemp, Error, TEXT("SpawnPathWalker: no HexGrid subsystem for this world."));
+			return;
+		}
+
+		const FHexCoord Coord(Q, R);
+		const FHexTile* Tile = Grid->GetTile(Coord);
+		if (!Tile || !Tile->bIsSpawn)
+		{
+			UE_LOG(LogTemp, Error, TEXT("SpawnPathWalker: %s is not a spawn-flagged tile (see SetSpawnFlag)."), *Coord.ToString());
+			return;
+		}
+
+		ADebugPathWalker* Walker = World->SpawnActor<ADebugPathWalker>();
+		if (!Walker)
+		{
+			UE_LOG(LogTemp, Error, TEXT("SpawnPathWalker: failed to spawn ADebugPathWalker."));
+			return;
+		}
+
+		Walker->StartWalking(Coord, HexesPerSecond);
+		UE_LOG(LogTemp, Display, TEXT("SpawnPathWalker: walking from %s at %.2f hexes/s."), *Coord.ToString(), HexesPerSecond);
 	}
 
 	void DebugOccupancy(const TArray<FString>& Args, UWorld* World)
@@ -513,6 +562,12 @@ static FAutoConsoleCommandWithWorldAndArgs SpawnChampionCommand(
 	TEXT("SpawnChampion"),
 	TEXT("SpawnChampion <DataAssetName> <q> <r> - debug-only: spawns a champion directly onto a hex, bypassing the shop and bench."),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugSpawnChampion)
+);
+
+static FAutoConsoleCommandWithWorldAndArgs SpawnPathWalkerCommand(
+	TEXT("SpawnPathWalker"),
+	TEXT("SpawnPathWalker <q> <r> [hexesPerSecond] - debug-only: spawns a pathfinding test walker on a spawn-flagged hex; it walks to the back row and logs its crossing time."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugSpawnPathWalker)
 );
 
 static FAutoConsoleCommandWithWorldAndArgs DebugOccupancyCommand(
