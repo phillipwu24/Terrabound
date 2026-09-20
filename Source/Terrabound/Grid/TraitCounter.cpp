@@ -14,7 +14,9 @@ int32 UTraitCounter::GetTraitCount(FGameplayTag Tag) const
 		return 0;
 	}
 
-	int32 Count = 0;
+	// Distinct champions, not bodies: a champion's identity is its data asset, so a second copy of
+	// the same champion adds nothing, as in TFT.
+	TSet<const UChampionData*> DistinctChampions;
 	for (const FHexCoord& Coord : Grid->GetAllTileCoords())
 	{
 		const FHexTile* Tile = Grid->GetTile(Coord);
@@ -22,8 +24,8 @@ int32 UTraitCounter::GetTraitCount(FGameplayTag Tag) const
 		const UChampionData* Data = Champion ? Champion->GetChampionData() : nullptr;
 		if (Data && Data->Traits.HasTag(Tag))
 		{
-			++Count;
+			DistinctChampions.Add(Data);
 		}
 	}
-	return Count;
+	return DistinctChampions.Num();
 }

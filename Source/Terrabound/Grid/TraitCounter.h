@@ -8,7 +8,7 @@
 #include "TraitCounter.generated.h"
 
 /**
- * Answers "how many board champions carry Tag" (PLAN.md 6.7) - a UWorldSubsystem so the future
+ * Answers "how many distinct board champions carry Tag" (PLAN.md 6.7) - a UWorldSubsystem so the future
  * trait panel widget can reach it the same way it reaches HexGrid/ShopSystem/EconomyState.
  *
  * Recomputes from HexGrid on every call rather than maintaining a live tally - the board is only
@@ -25,7 +25,10 @@ class TERRABOUND_API UTraitCounter : public UWorldSubsystem
 	GENERATED_BODY()
 
 public:
-	/** Board champions (not bench, not carried) whose ChampionData::Traits contains Tag. */
+	/**
+	 * Distinct champions (not bench, not carried) whose ChampionData::Traits contains Tag. Two
+	 * copies of the same champion - the same ChampionData asset - count once, as in TFT.
+	 */
 	UFUNCTION(BlueprintPure, Category = "Traits")
 	int32 GetTraitCount(FGameplayTag Tag) const;
 };
