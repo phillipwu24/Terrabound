@@ -20,7 +20,8 @@ score.
 **Status:** Checkpoint 1 complete (2026-09-20) — board, controls, shop, bench,
 placement, trait counter, pathfinder. No enemies, no combat, no GAS yet. The plan
 for the next checkpoint has not been written; do not start enemy or combat work
-until it is. See `PLAN.md`.
+until it is. Star-up (3-copy merge) was added afterwards as an addendum to
+Checkpoint 1. See `PLAN.md`.
 
 ## Build command
 
@@ -171,9 +172,10 @@ later just apply the tag.
 
 **Attributes must persist across waves.** Units keep their HP between waves; the
 default GAS assumption of "reset each round" is wrong here. Unit actors survive
-between waves and are never destroyed and respawned. Selling a champion is an
-intentional removal and is exempt; no board-refresh or wave-reset path may
-destroy and recreate units.
+between waves and are never destroyed and respawned. Selling a champion, and
+merging copies into a star-up, are intentional removals and are exempt (a merge
+upgrades the surviving unit in place — it is never recreated); no board-refresh
+or wave-reset path may destroy and recreate units.
 
 **GAS is not introduced until Step 2 of the design-rationale build order** — the
 first champion that shoots something. Checkpoint 1 sits before that and contains
@@ -219,7 +221,8 @@ nothing. Do not build a runtime stat system that GAS will later have to displace
   by being dragged there from the bench.
 - Bench slots are drag sources and drop targets with the same interaction as
   hexes. Bench → board, board → bench, and bench → bench are all supported.
-- A full bench blocks buying. The player must place or sell first.
+- A full bench blocks buying, except for a copy that completes a star-up (below).
+  The player must place or sell first.
 - Dropping a champion onto an occupied hex swaps the two, as in TFT.
 - Bench champions do not count toward trait totals, take no damage, and do
   nothing. Only the board counts.
@@ -228,6 +231,16 @@ nothing. Do not build a runtime stat system that GAS will later have to displace
 - **`Bench` owns that array.** `ShopSystem` asks it for free space and hands it a
   champion; the drag system asks it to add and remove. Neither holds bench state.
   A shop that owns the bench ends up owning placement, which is the wrong shape.
+- **Star-up:** `CopiesPerStarUp` copies of the same champion at the same star
+  level merge into one a level higher, up to `MaxStarLevel` (both in
+  `EconomyConfig`). `ChampionMerger` owns it — it touches both `Bench` and
+  `HexGrid`, which `ShopSystem` must not. It runs only when a copy is bought,
+  never on drag. The survivor is a board copy over a bench copy, upgraded in
+  place. A copy that completes a merge is consumed and never benched, so it is
+  allowed onto a full bench. Buying is blocked while a unit is carried (a
+  carried unit is on neither bench nor board). Selling a merged unit refunds and
+  returns every copy it is worth. Star level is runtime state on `ChampionBase`;
+  the visual scales the mesh, never the actor, so the HitBox stays uniform.
 - The one exception to buy-to-bench is a debug console command used before the
   shop exists. It is debug-only and never reachable in normal play.
 
@@ -405,7 +418,7 @@ Source/Terrabound/
 ├── Combat/         TargetingComponent, TargetableInterface, CombatResolver
 ├── Abilities/      AttributeSet, GameplayEffects, ability base classes
 ├── Terrain/        TerrainPieceBase, PlacementValidator
-├── Economy/        ShopSystem, EconomyState, Bench
+├── Economy/        ShopSystem, EconomyState, Bench, ChampionMerger
 ├── Waves/          WaveManager, WaveDefinition
 └── Data/           ChampionData, EnemyData, BoardConfig (UDataAssets)
 

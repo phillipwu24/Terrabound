@@ -21,7 +21,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnShopChanged);
  *
  * Does not own Bench state - it calls UBench's public API (HasFreeSlot/AddChampion) rather than
  * holding a slot array of its own, per CLAUDE.md. Never touches UHexGrid or takes a coordinate -
- * Buy lands a champion on the bench, never on a hex.
+ * Buy lands a champion on the bench, never on a hex. Star-ups are UChampionMerger's job: Buy hands
+ * it each new copy, and a copy that completes a merge is consumed instead of benched.
  */
 UCLASS()
 class TERRABOUND_API UShopSystem : public UWorldSubsystem
@@ -45,10 +46,17 @@ public:
 	int32 GetRerollCost() const;
 
 	/** True if Buy(SlotIndex) would currently succeed - the slot is filled, its cost is
-	 * affordable, and the bench has room. Lets the shop widget grey out a card without
-	 * re-deriving Buy's own rules. */
+	 * affordable, no unit is being carried, and the bench has room or the copy completes a merge.
+	 * Lets the shop widget grey out a card without re-deriving Buy's own rules.
+	 *
+	 * Not while carrying: a carried unit is on neither the bench nor the board, so a merge scan
+	 * would miss it. */
 	UFUNCTION(BlueprintPure, Category = "Shop")
 	bool CanBuy(int32 SlotIndex) const;
+
+	/** Re-fires OnShopChanged for a change CanBuy depends on that the shop itself didn't make
+	 * (the player picking up or dropping a unit), so a widget greying cards from CanBuy refreshes. */
+	void NotifyAvailabilityChanged();
 
 	/**
 	 * Returns every non-null slot's champion to the pool, spends RerollCost gold, and draws a
@@ -59,15 +67,17 @@ public:
 	bool Reroll();
 
 	/**
-	 * Buys SlotIndex: fails cleanly (nothing changed) if the slot is empty, its tier cost isn't
-	 * affordable, or the bench is full. On success, spends the gold, spawns the champion onto the
-	 * bench, and empties the slot - it stays empty until the next Reroll.
+	 * Buys SlotIndex: fails cleanly (nothing changed) if CanBuy is false. On success, spends the
+	 * gold, spawns the champion onto the bench - unless it completes a merge, in which case it is
+	 * consumed by the star-up and never benched - and empties the slot; it stays empty until the
+	 * next Reroll.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Shop")
 	bool Buy(int32 SlotIndex);
 
 	/**
-	 * Sells Unit: refunds SellRefundPercentage of its tier cost, returns its ChampionData to the
+	 * Sells Unit: refunds SellRefundPercentage of its tier cost times the copies its star level is
+	 * worth (UEconomyConfig::GetCopiesInStar), returns that many copies of its ChampionData to the
 	 * pool, and destroys the actor. Fails cleanly if Unit isn't a champion. Does not touch HexGrid
 	 * or Bench - by the time a unit can be sold it's being carried (PLAN.md 6.6: sell is
 	 * carry-then-press-a-key), and BeginDrag already vacated its origin tile/slot on pickup.

@@ -3,6 +3,7 @@
 #include "ChampionBase.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "../Data/ChampionData.h"
+#include "../TerraboundSettings.h"
 
 AChampionBase::AChampionBase()
 {
@@ -23,6 +24,35 @@ void AChampionBase::BeginPlay()
 	{
 		InitializeFromChampionData(ChampionData);
 	}
+
+	if (Mesh)
+	{
+		BaseMeshScale = Mesh->GetRelativeScale3D();
+	}
+	ApplyStarScale();
+}
+
+void AChampionBase::SetStarLevel(int32 NewStarLevel)
+{
+	StarLevel = FMath::Max(1, NewStarLevel);
+	// Before BeginPlay BaseMeshScale isn't captured yet; BeginPlay applies the scale itself.
+	if (HasActorBegunPlay())
+	{
+		ApplyStarScale();
+	}
+}
+
+void AChampionBase::ApplyStarScale()
+{
+	const UTerraboundSettings* Settings = GetDefault<UTerraboundSettings>();
+	if (!Mesh || !Settings || Settings->StarMeshScaleMultipliers.IsEmpty())
+	{
+		return;
+	}
+
+	const TArray<float>& Multipliers = Settings->StarMeshScaleMultipliers;
+	const float Multiplier = Multipliers[FMath::Min(StarLevel - 1, Multipliers.Num() - 1)];
+	Mesh->SetRelativeScale3D(BaseMeshScale * Multiplier);
 }
 
 void AChampionBase::InitializeFromChampionData(UChampionData* Data)

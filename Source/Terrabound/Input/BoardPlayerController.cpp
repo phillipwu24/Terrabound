@@ -349,6 +349,7 @@ void ABoardPlayerController::OnSellPressed()
 	{
 		Shop->Sell(Unit);
 	}
+	NotifyShopCarryChanged();
 }
 
 void ABoardPlayerController::BeginDrag(ABoardUnitBase* Unit)
@@ -386,6 +387,8 @@ void ABoardPlayerController::BeginDrag(ABoardUnitBase* Unit)
 	{
 		Vis->SetTileVisualState(HoveredHex, GetHoveredPlacementVisualState(HoveredHex));
 	}
+
+	NotifyShopCarryChanged();
 }
 
 void ABoardPlayerController::EndDrag(bool bCancel)
@@ -426,6 +429,15 @@ void ABoardPlayerController::EndDrag(bool bCancel)
 
 	DraggedUnit = nullptr;
 	ClearPlacementPreview();
+	NotifyShopCarryChanged();
+}
+
+void ABoardPlayerController::NotifyShopCarryChanged() const
+{
+	if (UShopSystem* Shop = GetWorld() ? GetWorld()->GetSubsystem<UShopSystem>() : nullptr)
+	{
+		Shop->NotifyAvailabilityChanged();
+	}
 }
 
 ABoardUnitBase* ABoardPlayerController::GetOccupantAt(EDragLocationKind Kind, const FHexCoord& Coord, int32 BenchSlot) const

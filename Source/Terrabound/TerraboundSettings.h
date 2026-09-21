@@ -51,4 +51,12 @@ public:
 
 	UPROPERTY(EditAnywhere, config, Category = "Team Tint")
 	FLinearColor EnemyTintColor = FLinearColor(1.f, 0.1f, 0.1f, 0.25f);
+
+	/**
+	 * Champion mesh scale multiplier by star level: index 0 is 1-star, index 1 is 2-star, and so
+	 * on. A level past the end of the array uses the last entry. Applied to the mesh only, never
+	 * the actor, so the click/drag HitBox stays uniform at every star level.
+	 */
+	UPROPERTY(EditAnywhere, config, Category = "Star Level")
+	TArray<float> StarMeshScaleMultipliers = { 0.8f, 1.f, 1.25f };
 };

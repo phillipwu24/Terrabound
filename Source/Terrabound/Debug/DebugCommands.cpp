@@ -19,6 +19,7 @@
 #include "../Economy/ChampionPool.h"
 #include "../Economy/Bench.h"
 #include "../Economy/BenchVisualizer.h"
+#include "../Economy/ChampionMerger.h"
 #include "../Economy/ShopSystem.h"
 #include "DebugPathWalker.h"
 
@@ -356,11 +357,6 @@ namespace
 			UE_LOG(LogTemp, Error, TEXT("DebugBenchAdd: no Bench subsystem for this world."));
 			return;
 		}
-		if (!Bench->HasFreeSlot())
-		{
-			UE_LOG(LogTemp, Error, TEXT("DebugBenchAdd: bench is full."));
-			return;
-		}
 
 		// Debug only - bypasses the shop entirely, same spirit as SpawnChampion (PLAN.md 4.5).
 		const FString& AssetName = Args[0];
@@ -372,6 +368,14 @@ namespace
 			return;
 		}
 
+		// Same rule as a purchase: a full bench still takes a copy that completes a merge.
+		UChampionMerger* Merger = World->GetSubsystem<UChampionMerger>();
+		if (!Bench->HasFreeSlot() && !(Merger && Merger->WouldCompleteMerge(Data)))
+		{
+			UE_LOG(LogTemp, Error, TEXT("DebugBenchAdd: bench is full."));
+			return;
+		}
+
 		AChampionBase* Champion = World->SpawnActor<AChampionBase>();
 		if (!Champion)
 		{
@@ -379,6 +383,12 @@ namespace
 			return;
 		}
 		Champion->InitializeFromChampionData(Data);
+
+		if (Merger && Merger->TryMerge(Champion))
+		{
+			UE_LOG(LogTemp, Display, TEXT("DebugBenchAdd: '%s' completed a merge."), *AssetName);
+			return;
+		}
 		Bench->AddChampion(Champion);
 
 		if (TActorIterator<ABenchVisualizer> It(World); It)

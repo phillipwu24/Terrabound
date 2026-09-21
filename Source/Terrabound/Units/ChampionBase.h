@@ -45,6 +45,17 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Champion")
 	UChampionData* GetChampionData() const { return ChampionData; }
 
+	UFUNCTION(BlueprintPure, Category = "Champion")
+	int32 GetStarLevel() const { return StarLevel; }
+
+	/**
+	 * Set by the merge (UChampionMerger) - runtime state, not EditAnywhere, same rule as
+	 * CurrentCoord/Team. Clamped to at least 1; the upper bound (MaxStarLevel) is the merger's
+	 * rule, not this setter's. Rescales the mesh to match.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Champion")
+	void SetStarLevel(int32 NewStarLevel);
+
 protected:
 	virtual void BeginPlay() override;
 
@@ -55,4 +66,14 @@ protected:
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Champion")
 	TObjectPtr<UChampionData> ChampionData;
+
+private:
+	/** Scales Mesh to BaseMeshScale times this star level's multiplier (UTerraboundSettings). */
+	void ApplyStarScale();
+
+	int32 StarLevel = 1;
+
+	// The Mesh's own relative scale as authored (a champion Blueprint may set one), captured in
+	// BeginPlay so star scaling multiplies it rather than replacing it.
+	FVector BaseMeshScale = FVector::OneVector;
 };

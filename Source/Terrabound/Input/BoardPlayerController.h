@@ -37,6 +37,10 @@ public:
 	/** True and fills OutCoord if the mouse currently hovers a valid on-board tile. */
 	bool GetHoveredHex(FHexCoord& OutCoord) const;
 
+	/** True while a unit is lifted and not yet dropped or sold. A carried unit is on neither the
+	 * bench nor the board, which is why ShopSystem::CanBuy refuses purchases while this is true. */
+	bool IsCarryingUnit() const { return DraggedUnit.IsValid(); }
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void PlayerTick(float DeltaTime) override;
@@ -90,6 +94,10 @@ private:
 
 	void BeginDrag(ABoardUnitBase* Unit);
 	void EndDrag(bool bCancel);
+
+	/** Tells the shop the carry state changed, so a widget greying cards from CanBuy refreshes.
+	 * Called after DraggedUnit is set or cleared. */
+	void NotifyShopCarryChanged() const;
 
 	/** Whoever currently occupies Kind/Coord/BenchSlot, or nullptr if it's empty/invalid. */
 	ABoardUnitBase* GetOccupantAt(EDragLocationKind Kind, const FHexCoord& Coord, int32 BenchSlot) const;

@@ -4,7 +4,9 @@
 #include "ChampionPool.h"
 #include "Bench.h"
 #include "BenchVisualizer.h"
+#include "ChampionMerger.h"
 #include "EconomyState.h"
+#include "../Input/BoardPlayerController.h"
 #include "../TerraboundSettings.h"
 #include "../Data/EconomyConfig.h"
 #include "../Data/ChampionData.h"
@@ -67,7 +69,25 @@ bool UShopSystem::CanBuy(int32 SlotIndex) const
 	const UWorld* World = GetWorld();
 	const UEconomyState* Economy = World ? World->GetSubsystem<UEconomyState>() : nullptr;
 	const UBench* Bench = World ? World->GetSubsystem<UBench>() : nullptr;
-	return Economy && Bench && Economy->CanAfford(Config->GetCostForTier(Data->Tier)) && Bench->HasFreeSlot();
+	if (!Economy || !Bench || !Economy->CanAfford(Config->GetCostForTier(Data->Tier)))
+	{
+		return false;
+	}
+
+	const ABoardPlayerController* Controller = Cast<ABoardPlayerController>(World->GetFirstPlayerController());
+	if (Controller && Controller->IsCarryingUnit())
+	{
+		return false;
+	}
+
+	// A full bench still allows a copy that completes a merge: it is consumed, never benched.
+	const UChampionMerger* Merger = World->GetSubsystem<UChampionMerger>();
+	return Bench->HasFreeSlot() || (Merger && Merger->WouldCompleteMerge(Data));
+}
+
+void UShopSystem::NotifyAvailabilityChanged()
+{
+	OnShopChanged.Broadcast();
 }
 
 void UShopSystem::FillAllSlots()
@@ -122,14 +142,21 @@ bool UShopSystem::Buy(int32 SlotIndex)
 	}
 
 	Champion->InitializeFromChampionData(Data);
-	Bench->AddChampion(Champion);
-	Economy->Spend(Cost);
 
-	if (TActorIterator<ABenchVisualizer> It(World); It)
+	// A copy that completes a merge is consumed by it and never benched. Otherwise CanBuy has
+	// guaranteed a free bench slot: a full bench is only allowed through for a completing copy.
+	UChampionMerger* Merger = World->GetSubsystem<UChampionMerger>();
+	if (!(Merger && Merger->TryMerge(Champion)))
 	{
-		const int32 BenchSlotIndex = Bench->FindSlotIndex(Champion);
-		Champion->SetActorLocation(It->GetSlotTransform(BenchSlotIndex).GetLocation());
+		Bench->AddChampion(Champion);
+
+		if (TActorIterator<ABenchVisualizer> It(World); It)
+		{
+			const int32 BenchSlotIndex = Bench->FindSlotIndex(Champion);
+			Champion->SetActorLocation(It->GetSlotTransform(BenchSlotIndex).GetLocation());
+		}
 	}
+	Economy->Spend(Cost);
 
 	Slots[SlotIndex] = nullptr;
 	OnShopChanged.Broadcast();
@@ -151,9 +178,14 @@ bool UShopSystem::Sell(ABoardUnitBase* Unit)
 		return false;
 	}
 
-	const int32 Refund = FMath::RoundToInt(Config->GetCostForTier(Data->Tier) * Config->SellRefundPercentage);
+	// A star-up consumed copies from the pool for good; selling the merged unit returns all of them.
+	const int32 Copies = Config->GetCopiesInStar(Champion->GetStarLevel());
+	const int32 Refund = FMath::RoundToInt(Config->GetCostForTier(Data->Tier) * Copies * Config->SellRefundPercentage);
 	Economy->Add(Refund);
-	Pool->ReturnChampion(Data);
+	for (int32 Copy = 0; Copy < Copies; ++Copy)
+	{
+		Pool->ReturnChampion(Data);
+	}
 	Unit->Destroy();
 	return true;
 }

@@ -586,7 +586,9 @@ route through the shop, which is the wrong shape.
 **Buying never spawns a champion onto a hex.** `ShopSystem` has no knowledge of `HexGrid` and no
 reference to a coordinate. If a purchase can reach the board without a drag, the flow is wrong.
 
-A full bench blocks buying — the buy button disables and the attempt fails cleanly.
+A full bench blocks buying — the buy button disables and the attempt fails cleanly. (The one
+exception, added after the checkpoint closed: a copy that completes a star-up merge — see the
+addendum below.)
 **Done when:** buying without enough gold or with a full bench fails cleanly and leaves state
 untouched.
 
@@ -632,8 +634,9 @@ Drag to a sell zone, or select and press a key. Refunds gold, returns the champi
 frees the tile.
 
 Note for later: `CLAUDE.md` requires that units are **never destroyed and respawned between
-waves**, so attributes persist. Selling is an intentional removal and is exempt — but do not build
-any board-refresh or wave-reset path that destroys and recreates champions.
+waves**, so attributes persist. Selling (and, later, merging copies into a star-up) is an
+intentional removal and is exempt — but do not build any board-refresh or wave-reset path that
+destroys and recreates champions.
 
 ### 6.7 Trait counter UI  
 **[C++ + Editor]**
@@ -741,6 +744,46 @@ confirm buying is blocked. Sell from both bench and board. Watch trait counts th
       `DA_BoardConfig`)
 - [x] Board crossing time measured and recorded
 - [x] No GAS, no AttributeSet, no AbilitySystemComponent anywhere
+
+---
+
+## Addendum — Star-up (added after Checkpoint 1 closed)
+
+Three copies of the same champion at the same star level merge into one a level higher (TFT's
+star-up). Built at the user's direction between the checkpoint's close and the next plan; design
+in `DESIGN.md` "Star levels".
+
+**[C++]** `UChampionMerger` (`Economy/`, a world subsystem) owns the merge. It touches both `Bench`
+and `HexGrid`, which is why it isn't in `ShopSystem`. The rule itself is a pure function,
+`SelectMergeGroup`, tested headlessly (`Terrabound.Economy.ChampionMerge.*`); the world-facing
+part (`TryMerge`, `WouldCompleteMerge`) is not, and is covered by the playtest below.
+
+- `AChampionBase::StarLevel` — runtime state with a getter/setter, not `EditAnywhere`. The setter
+  scales the **mesh** (per `UTerraboundSettings::StarMeshScaleMultipliers`), never the actor, so
+  the HitBox stays uniform.
+- `EconomyConfig::MaxStarLevel` (3) and `CopiesPerStarUp` (3), placeholders like the rest.
+- `ShopSystem::Buy` hands each new copy to the merger; a copy that completes a merge is consumed
+  and never benched. `CanBuy` allows a full bench for exactly that case, and refuses while a unit
+  is being carried (`BoardPlayerController::IsCarryingUnit`).
+- `ShopSystem::Sell` refunds tier cost × `CopiesPerStarUp^(star-1)` and returns that many copies
+  to the pool.
+- `DebugBenchAdd` goes through the merger, so three calls with the same champion merge.
+
+Not built: any stat bonus per star, and healing on star-up — both need GAS.
+
+**Done when:**
+- [x] `SelectMergeGroup` tests pass and were mutation-checked (star-level match and survivor
+      priority each fail a test when removed)
+- [ ] Three `DebugBenchAdd <Champion>` merge into one scaled-up copy
+- [ ] Buying three of the same champion from the shop merges
+- [ ] Buying the completing copy with a full bench works; buying a non-completing copy with a
+      full bench still fails
+- [ ] A merge with copies on both bench and board keeps the board copy, in place
+- [ ] Three 2-stars merge into a 3-star, and a 3-star never merges further
+- [ ] Selling a 2-star refunds 3× its tier cost and restores 3 copies to the pool
+- [ ] Buying is refused while a unit is carried; cards re-enable on drop
+- [ ] `DT_ChampionPool` `PoolSize` is at least `CopiesPerStarUp^(MaxStarLevel-1)` (9) per champion,
+      or a 3-star is unreachable
 
 ---
 

@@ -508,6 +508,40 @@ available from both bench and board and returns the champion to the pool.
 Bench size, shop slot count, reroll cost, and sell refund are all placeholder
 numbers — see Section 4.
 
+### Star levels
+
+As in TFT: three copies of the same champion at the same star level merge into one
+copy a level higher. Everyone starts at 1 star; the cap is 3 (`MaxStarLevel`), and
+the copies-per-merge count is `CopiesPerStarUp`, both in `EconomyConfig`.
+
+- **The check runs when a copy is bought, not when units are moved.** Moving a unit
+  doesn't change what the player owns, so there is nothing to re-check. It cascades:
+  a new 2-star can complete a trio of 2-stars.
+- **Bench and board both count.** The survivor is a board copy if there is one, else
+  a bench copy; it is upgraded in place and keeps its position. The other two are
+  removed.
+- **A full bench doesn't block the copy that completes a merge** — it is consumed,
+  never benched.
+- **Buying is blocked while a unit is being carried.** A carried unit is on neither
+  the bench nor the board, so a merge would miss it.
+- **A merged unit is worth its copies.** Selling a 2-star refunds three copies' cost
+  and returns three copies to the pool; a merge itself returns nothing.
+- **Traits are unaffected.** A trait counts distinct champions, so a 2-star Grux is
+  still one Bruiser, same as three Gruxes were.
+- **Visual:** the mesh (not the actor, so the click target stays uniform) is scaled
+  up per star level.
+
+**Stat scaling (decided):** attack speed and range stay flat across star levels.
+A champion's reach and cadence don't change; range in particular is a hex count the
+targeting model depends on. Health and attack damage are the stats that scale,
+multiplicatively per level, as in TFT (roughly ×1.8 health and ×1.5 damage per
+level there, so 3-star is ×3.24 and ×2.25); the actual multipliers are tuning data
+read by the champion's initial GameplayEffect once GAS exists.
+
+Unresolved: the per-star multipliers, and whether a star-up heals the survivor.
+Both wait on GAS and interact with persistent damage (below) and with the
+sell-value rule in Section 4, "Selling damaged units".
+
 ### Persistent damage
 
 Units do **not** reset to full HP between waves. Wounded stays wounded, dead
@@ -517,6 +551,9 @@ Healing between waves is a paid action. Death is not the routine expense; death
 is what happens when you fall behind on the routine expense. This makes backline
 healers and shielders genuine **economy** pieces — a support that heals 30%
 between waves is worth its slot in gold saved.
+
+That only holds if healing can't be bypassed by selling a wounded unit and buying
+a fresh one — see Section 4, "Selling damaged units".
 
 ### Free repositioning between waves
 
@@ -662,6 +699,68 @@ are wrong, they're just wrong in a specific enough way to learn from:
 - Base income 5/wave plus per-kill gold
 - Healing roughly 1 gold per 20% HP restored
 - 5 shop slots, 6 bench slots, reroll 2 gold, sell refunds full purchase price
+  (at full HP — see "Selling damaged units")
+
+### Selling damaged units (healing laundering)
+
+**The problem.** Damage persists between waves and healing is a paid action, so a
+healer is worth its slot in gold saved. But if selling refunds the full price, a
+player can sell a wounded unit and buy a fresh one for nothing — a free full heal,
+and healers stop mattering. With a roster of 3–4 champions and 5 shop slots, the
+sold champion is almost always in the shop to buy back, so shop randomness is not
+enough friction. Applies mainly to 1-star units: selling a 2-star returns 3 copies
+and rebuying needs 3 copies out of the shop plus a merge (rerolls, bench room); a
+3-star needs 9.
+
+**Leading candidate (not decided; needs GAS, since HP doesn't exist before it).**
+Sell value depends on HP, binary:
+
+- **At full HP:** full purchase price. Buying the wrong champion, or a unit that
+  fought without taking damage, still sells for full price.
+- **Below full HP:** a lower refund, `DamagedSellRefundPercentage` of price. A
+  fraction of price rather than a raw gold amount so it scales with tier and star.
+- **Merged units:** copies × (full price or damaged refund), so a damaged 2-star
+  gets 3× the damaged refund.
+- Tunable `FullPriceHpThreshold`, default 100%, so the cliff below can be softened
+  (e.g. 95%) without changing the rule.
+
+HP becomes a second currency: undamaged units are liquid, wounded ones aren't, and
+healing back to full restores resale value on top of fighting capacity.
+
+**The ratio that has to hold.** Any sell-based rule is capped: the worst penalty is
+losing the whole price. If a full heal costs more than a unit, replacing a badly
+hurt unit is always cheaper than healing it, whatever the sell rule. At roughly
+1 gold per 20% HP a full heal is 5 gold, and a 1–3 gold unit can never be penalized
+by 5. So **price minus damaged refund must be at least the cost of a full heal.**
+Either scale unit prices up (e.g. 10/20/30 with a 50% damaged refund) or make
+healing cheaper. Either way this moves only `EconomyConfig` numbers, all of which
+are placeholders.
+
+**Known downsides.**
+- **A cliff.** 1 HP of damage costs the whole price gap when selling, and healing
+  the last sliver is suddenly worth the whole gap, so players will feel pushed to
+  top off. That may be a feature (healers matter more); `FullPriceHpThreshold`
+  softens it if not.
+- **The penalty doesn't grow with damage.** A unit at 99% and one at 10% lose the
+  same amount on sale; the ratio rule above is what keeps that from being a leak.
+- **The UI must show the sell value** and its change, or it reads as a hidden tax.
+
+**Related rules to hold.**
+- **Benching must not heal.** Bench units take no damage and do nothing; if
+  they also recover HP, that is a free heal that skips the sell rule entirely.
+  Healing happens only through the paid action.
+- **Star-up keeps the HP fraction** (proposed, unconfirmed). A star-up scales max
+  HP, and carrying over absolute HP would leave a merged unit looking badly
+  hurt; preserving the fraction is neutral — no free heal, no penalty. A bonus heal
+  on star-up (e.g. 50% of missing HP) is not exploitable, since a merge costs two
+  extra copies, but it makes merges double as heals; wait until healing prices
+  feel right in play.
+
+**Considered, not chosen.** A flat sell fee (punishes selling healthy units,
+coarse at 1–3 gold, gives up "sell is a free undo"); a sell value proportional to
+HP fraction (coarse at integer gold, needs a floor rule to bite at all); accepting
+the leak for 1-stars (bounded by a cheap unit's price, but it guts the healer's
+economic role).
 
 ### What a leak costs
 
