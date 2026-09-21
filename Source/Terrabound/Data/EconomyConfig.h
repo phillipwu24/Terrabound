@@ -26,10 +26,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Economy")
 	TMap<int32, int32> TierCostTable = { {1, 1}, {2, 2}, {3, 3} };
 
-	/** Flat gold granted at the start of each wave. From DESIGN.md's rough starting points. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Economy")
-	int32 BaseIncomePerWave = 5;
-
 	/** Gold the player starts a run with. Not specified anywhere in DESIGN.md — unresolved placeholder. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Economy")
 	int32 StartingGold = 30;

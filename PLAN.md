@@ -200,7 +200,7 @@ console command may stay as a debug tool.
   `TryOccupy` on it succeeds. The timer sets the rate; occupancy only ever delays.
 - **Resolution:** the wave ends when the roster is fully spawned and no enemy is alive. Back to
   Prep, `WaveIndex` up. No timer, and no income is granted here (D3): gold comes only from kills.
-  Remove the unused `BaseIncomePerWave` field from `EconomyConfig`.
+  (`BaseIncomePerWave` was already removed from `EconomyConfig`.)
 - **Leaks:** `OnEnemyExited` increments `LeaksThisWave` and `LeaksTotal`, logged per wave and
   cumulatively. **No cost, no HP bar, nothing that reads the counter.**
 - **Debug:** `StartWave`, `WaveDump`.
