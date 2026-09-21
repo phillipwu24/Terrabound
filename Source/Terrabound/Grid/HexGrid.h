@@ -43,6 +43,17 @@ public:
 	bool ClearOccupant(const FHexCoord& Coord);
 
 	/**
+	 * Claims Coord for Unit only if no other valid unit is standing there - the enforcement half of
+	 * "one unit per tile" for anything that moves (enemies claim the next hex as they begin a step).
+	 * Unlike SetOccupant it never overwrites. Returns false for an invalid coord, a null Unit, or a
+	 * tile held by a different unit; a stale (destroyed) occupant counts as empty. Re-claiming a tile
+	 * Unit already holds returns true without a broadcast. Checks occupancy only: walkable, spawn and
+	 * placeable are the pathfinder's and placement's concern, not "can a unit stand here".
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Hex Grid")
+	bool TryOccupy(const FHexCoord& Coord, ABoardUnitBase* Unit);
+
+	/**
 	 * Sets whether Coord is a spawn tile. A function, not exposed state: FHexTile.bIsSpawn stays
 	 * non-UPROPERTY, so a level Blueprint asks the grid to flip the flag rather than holding a
 	 * copy of it. Returns false for an invalid coord.
@@ -96,8 +107,8 @@ public:
 	TArray<FHexCoord> GetBackRowCoords() const;
 
 	/**
-	 * Fires whenever SetOccupant/ClearOccupant successfully mutates a tile - every board
-	 * place/remove/swap/sell path already routes through one of the two (PLAN.md 6.7), so this is
+	 * Fires whenever SetOccupant/ClearOccupant/TryOccupy successfully mutates a tile - every board
+	 * place/remove/swap/sell/step path routes through one of the three (PLAN.md 6.7), so this is
 	 * the single correct hook for anything that needs to know "the board changed," without that
 	 * thing needing to know why. No payload - listeners re-query whatever they care about.
 	 */

@@ -99,6 +99,27 @@ bool UHexGrid::ClearOccupant(const FHexCoord& Coord)
 	return true;
 }
 
+bool UHexGrid::TryOccupy(const FHexCoord& Coord, ABoardUnitBase* Unit)
+{
+	FHexTile* Tile = GetMutableTile(Coord);
+	if (!Tile || !Unit)
+	{
+		return false;
+	}
+	const ABoardUnitBase* Current = Tile->Occupant.Get();
+	if (Current == Unit)
+	{
+		return true;
+	}
+	if (Current)
+	{
+		return false;
+	}
+	Tile->Occupant = Unit;
+	OnOccupancyChanged.Broadcast();
+	return true;
+}
+
 bool UHexGrid::SetSpawnFlag(const FHexCoord& Coord, bool bEnabled)
 {
 	FHexTile* Tile = GetMutableTile(Coord);
