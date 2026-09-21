@@ -6,6 +6,8 @@ Instructions for Claude Code working in this repository.
 - `CLAUDE.md` — this file. Architecture invariants and working style. Applies always.
 - `PLAN.md` — the current checkpoint's task breakdown. Source of truth for what to
   build right now and in what order.
+- `ANIMATION_FINDINGS.md` — read-only facts about the stock Paragon Animation
+  Blueprints, for the animation tasks in `PLAN.md`.
 
 ## Project
 
@@ -18,10 +20,9 @@ score.
 **Language:** C++ for all logic. Blueprints for data and assembly only.
 **Team:** solo project.
 **Status:** Checkpoint 1 complete (2026-09-20) — board, controls, shop, bench,
-placement, trait counter, pathfinder. No enemies, no combat, no GAS yet. The plan
-for the next checkpoint has not been written; do not start enemy or combat work
-until it is. Star-up (3-copy merge) was added afterwards as an addendum to
-Checkpoint 1. See `PLAN.md`.
+placement, trait counter, pathfinder, plus star-up (3-copy merge) added afterwards.
+Checkpoint 2 is the current plan: enemies walking, then GAS and the first champion
+that shoots, then blockers and aggro. See `PLAN.md`.
 
 ## Build command
 
@@ -182,14 +183,18 @@ first champion that shoots something. Checkpoint 1 sits before that and contains
 no AttributeSet, no AbilitySystemComponent, and no GameplayEffects. Stat fields on
 `ChampionData` are initialization data for a future AttributeSet: stored, read by
 nothing. Do not build a runtime stat system that GAS will later have to displace.
+Checkpoint 2 introduces it in Phase 2 (`PLAN.md` 2.1), which is when those stat
+fields start being read.
 
 ## Board
 
 - 7 hexes across, 8 rows deep, 56 total
 - **No crystal, no nexus.** An enemy reaching the back row exits and despawns.
-  A leak increments a counter and currently costs nothing. A cost **is** planned;
-  what it is has not been decided. Do not add an HP bar, and do not invent a
-  penalty — implement the counter and the leak event, and leave the cost off
+  A leak increments a counter. Kill gold is the only income, so an enemy that
+  leaks drops no gold: a real punishment that needs no code. A further cost **is**
+  planned, stacking on top of that; what it is has not been decided. Do not add an
+  HP bar, and do not invent a penalty — implement the counter and the leak event,
+  and leave the chosen cost off
 - Enemies path to a single virtual goal node with zero-cost edges from every
   back-row hex, so the exit is one source for the distance search rather than
   eight targets
@@ -203,12 +208,13 @@ nothing. Do not build a runtime stat system that GAS will later have to displace
 - Per-tile flags kept independent: `is_spawn`, `is_placeable`, `is_walkable`
 - One unit per tile. `Occupant` is a single reference to `ABoardUnitBase`, which
   is why champions and enemies share that base — one field covers both sides.
-- **A cap on units placed on the board is planned; its value, and how it is
-  calculated, have not been decided.** Do not add a cap check to placement and do
-  not invent a number until the enemy checkpoint plan settles it. A row is 7 wide,
-  so a cap of 6 or less makes a full unit-only wall impossible — that is the lever.
-  Settled, so it needn't be re-asked: bench champions do not count toward it; a
-  swap (board↔board, or bench→occupied hex) never changes the board count and is
+- **Unit cap:** a flat config value, `UnitCap` on `DA_BoardConfig`, counting board
+  champions only (a placeholder, marked unresolved; built in `PLAN.md` 3.6, so do
+  not add a cap check before then). How it is calculated beyond a flat number
+  (growth per wave or level) has not been decided. A row is 7 wide, so a cap of 6
+  or less makes a full unit-only wall impossible — that is the lever. Settled, so
+  it needn't be re-asked: bench champions do not count toward it; a swap
+  (board↔board, or bench→occupied hex) never changes the board count and is
   always allowed, so only bench→empty hex is subject to the cap; the drag preview
   should show hexes as invalid once the board is at the cap.
 
@@ -322,19 +328,16 @@ questions first:
    reroutes cleanly.
 5. **Shop and traits.** Best understood, least likely to surprise.
 
-**Current build order is `PLAN.md`**, which deliberately front-loads the board,
-controls, shop, and placement so there is something playable to iterate against
-before combat exists. Enemies and combat follow in a later checkpoint.
+**Current build order is `PLAN.md`.** Checkpoint 1 deliberately front-loaded the
+board, controls, shop, and placement so there was something playable to iterate
+against before combat existed (a sanctioned reordering), and preserved board
+crossing time with a debug walker: 7 hexes, 3.5 s at 2 hexes/s. Checkpoint 2
+follows the list above in order: Step 1 (enemies walking), Step 2 (GAS and the
+first champion that shoots), Step 3 (blockers and aggro). Terrain and assassins
+come after.
 
-This is a sanctioned reordering, not drift. `PLAN.md` governs what gets built and
-when; the list above governs *why* that sequence exists and still applies to
-everything `PLAN.md` has not reached.
-
-The one thing the reorder puts at risk is **board crossing time** — the number
-every other number is tuned against. `PLAN.md` task 7.1 preserves it with a debug
-walker: steps hex by hex across the grid via the pathfinder, no AI, no combat, no
-`EnemyBase`. That task is not optional, and Checkpoint 1 does not close without the
-number written down.
+`PLAN.md` governs what gets built and when; the list above governs *why* that
+sequence exists and still applies to everything `PLAN.md` has not reached.
 
 Do not skip ahead within `PLAN.md`, and do not start work beyond the current
 checkpoint. The plan is rewritten after each checkpoint from what the game
@@ -481,14 +484,16 @@ runtime value produce desyncs that present as unrelated bugs.
 
 Level configuration is not runtime state. A per-level array of spawn coordinates
 that the grid reads once at generation is an input, not a mirror, and belongs in
-the level Blueprint — that is the designer workflow `DESIGN.md` calls for. The
+the level (a level-placed actor or the level Blueprint) — that is the designer
+workflow `DESIGN.md` calls for. The
 distinction that matters is *drift*: a value read once at startup cannot disagree
 with the grid afterwards, because nothing reads it afterwards. A Blueprint-held
 copy of live tile state can, and is forbidden.
 
-That generation-time array arrives with the enemy checkpoint. Until then, spawn
-flags are set through a `BlueprintCallable` setter on the grid (`PLAN.md` 1.6).
-Both are legitimate; neither puts tile state in a Blueprint.
+That generation-time array is built in Checkpoint 2 (`PLAN.md` 1.3) as a
+level-placed actor holding the array and `SpawnInterval`; at startup it calls the
+grid's `BlueprintCallable` setter for each hex. The actor and the setter are both
+legitimate; neither puts tile state in a Blueprint.
 
 **When unsure, ask.** Name the specific variable and ask whether it should be
 exposed. Do not guess in either direction.

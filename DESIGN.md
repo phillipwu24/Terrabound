@@ -570,8 +570,18 @@ that autobattler players enjoy.
 
 ### Gold collection
 
-Base gold from kills **auto-collects**. No mandatory clicking. Rare and elite
-enemies drop a bounty the player has a few seconds to click for.
+**Kill gold is the wave income.** There is no flat per-wave payout: each enemy
+carries a gold value, and the moment it dies that gold **auto-collects** into the
+player's total. No mandatory clicking. The HUD shows a `+N` at the gold counter for
+each kill, so the player watches income arrive. Gold earned mid-wave can't be spent
+until the wave ends (shop, sell and heal all lock during combat), so it builds up
+and is spent in prep. Interest, streaks and anything like them are separate
+systems, not part of this. Rare and elite enemies drop a bounty the player has a
+few seconds to click for.
+
+Consequence, and intended: an enemy that leaks drops nothing, so a leak forfeits
+that enemy's gold. That is a punishment for leaking in its own right — see "What a
+leak costs".
 
 Rationale: PvZ sun-clicking works because that game has downtime. Autobattler
 combat is dense and the pleasure is watching it resolve. Attention gets rewarded,
@@ -684,9 +694,9 @@ for. Until then, wave design has one real pressure to lean on, not two.
 
 Explicitly deferred. Cannot be tuned from a document.
 
-Open questions: gold per kill (flat or by enemy type?), base income per wave
-(interest? streaks?), reroll cost, unit tier pricing, healing cost, gold in vs
-gold out across a 20+ wave run.
+Open questions: gold per kill (flat or by enemy type?), interest and streaks (there
+is no flat per-wave income; kills are the income), reroll cost, unit tier pricing,
+healing cost, gold in vs gold out across a 20+ wave run.
 
 **What absorbs gold at wave 30+?** Once the board is full and units are maxed,
 something has to keep consuming income or the run becomes a formality until the
@@ -696,7 +706,7 @@ Rough starting points, purely so there's something to push against — all of th
 are wrong, they're just wrong in a specific enough way to learn from:
 
 - Unit cost 1/2/3 by tier
-- Base income 5/wave plus per-kill gold
+- No flat wave income; kill gold only, about 1 gold per enemy to start
 - Healing roughly 1 gold per 20% HP restored
 - 5 shop slots, 6 bench slots, reroll 2 gold, sell refunds full purchase price
   (at full HP — see "Selling damaged units")
@@ -749,7 +759,7 @@ are placeholders.
 - **Benching must not heal.** Bench units take no damage and do nothing; if
   they also recover HP, that is a free heal that skips the sell rule entirely.
   Healing happens only through the paid action.
-- **Star-up keeps the HP fraction** (proposed, unconfirmed). A star-up scales max
+- **Star-up keeps the HP fraction** (decided). A star-up scales max
   HP, and carrying over absolute HP would leave a merged unit looking badly
   hurt; preserving the fraction is neutral — no free heal, no penalty. A bonus heal
   on star-up (e.g. 50% of missing HP) is not exploitable, since a merge costs two
@@ -773,6 +783,13 @@ competent board at wave 5 versus wave 15 tell you which lever fits and how hard
 it needs to pull. Until a cost exists, leaking drains pressure off a wave for
 free, so early difficulty readings are softer than the finished game should be —
 read them with that in mind rather than tuning wave sizes up to compensate.
+
+One punishment is already in place: kill gold is the only income, so an enemy that
+leaks drops no gold and the player forfeits that enemy's share. It needs no code; it
+falls out of the income model. It is a real cost, and **additional** to whatever is
+chosen above — the chosen cost stacks on top, so size it knowing leaks already
+hurt. The counter itself still costs nothing directly and the decision above stays
+open, but the "leaking is free" caveat is softer than it reads.
 
 ### Spawn interval
 

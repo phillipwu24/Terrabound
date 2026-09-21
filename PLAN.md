@@ -1,804 +1,555 @@
-# PLAN.md — Terrabound, Checkpoint 1
+# PLAN.md — Terrabound, Checkpoint 2
+
+> Checkpoint 1's plan is in git at `d469f22` (`git show d469f22:PLAN.md`). Read-only facts about
+> the stock Paragon Animation Blueprints, used by tasks 1.8 and 3.8, are in `ANIMATION_FINDINGS.md`.
 
 Companion to `CLAUDE.md` and `DESIGN.md`. This document covers **one checkpoint only**.
 
-**Scope:** the playable board. Hex grid, TFT-style mouse controls, a shop, and 3–4 Paragon
-champions that can be bought and placed. **No enemies, no combat, no waves, no trait effects.**
+**Scope:** the first fights. Enemies that walk the board, GAS, a champion that shoots, and enemies
+that stop and fight blockers. **No assassins, no mana or cast abilities, no terrain, no trait
+effects, no chosen leak cost.**
+
+**Shape:** three phases, in this order, each answering the riskiest open question first.
+
+1. **Enemies walk** — no combat, no GAS. Build-order Step 1: does the board size and enemy speed
+   produce a fight worth having?
+2. **GAS and the first champion that shoots** — Step 2. The first real game loop.
+3. **Blockers and aggro** — Step 3. Where the aggro model gets its real test.
 
 ---
 
 ## Read order
 
 1. `CLAUDE.md` — architecture invariants and working style. Highest authority.
-2. `DESIGN.md` — full design rationale. The source of truth for design intent.
-3. This file — build order and task breakdown for Checkpoint 1.
+2. `DESIGN.md` — design intent.
+3. This file — build order and task breakdown for Checkpoint 2.
 
 **Precedence:** if this document contradicts `CLAUDE.md` on an architecture invariant, `CLAUDE.md`
-wins and the contradiction is a bug in this file — raise it. The one deliberate exception is
-build order, below.
+wins and the contradiction is a bug in this file — raise it. Unlike Checkpoint 1, this plan follows
+`CLAUDE.md`'s build order (Steps 1 → 2 → 3) with no reordering.
 
 ---
 
-## Deliberate deviation from CLAUDE.md's build order
+## Decisions this plan makes
 
-`CLAUDE.md` orders the build as: one enemy walking → one unit that shoots → blockers → terrain →
-shop and traits, and says not to skip ahead.
+Calls that `DESIGN.md`, `CLAUDE.md` and Checkpoint 1 do not settle, all approved. The tasks below
+assume them; change one here first if it needs revisiting.
 
-**Checkpoint 1 intentionally reorders this at the project owner's direction.** The board, controls,
-shop, and placement come first, so there is something playable to iterate against before combat
-exists. Enemies and combat follow in a later checkpoint, and the plan gets rewritten then.
+| # | Question | Decision |
+|---|---|---|
+| D1 | Which actions are allowed mid-wave? | **Prep only.** Buy, reroll, sell, heal, drag and placement all lock during combat. A mid-wave merge would destroy a fighting unit, and `DESIGN.md` already says no moving units mid-combat. |
+| D2 | What starts a wave? | **The player**, via a `StartWave` console command and key. No prep timer. A Ready button is UI, which waits. |
+| D3 | How does the player earn gold? | **Kill gold only; no flat per-wave income** (the unused `BaseIncomePerWave` is removed). Each enemy carries a flat `GoldOnKill` on `EnemyData` (placeholder 1; a per-type value is the same field with another number). It is granted automatically the moment the enemy dies, and the HUD shows a `+N` at the gold counter. Gold can't be spent until the wave ends (D1), so it builds up in combat and is spent in prep. `StartingGold` funds the first prep. Interest and streaks are separate systems, later. A leaking enemy drops no gold: that is an intended punishment for leaking, additional to any leak cost chosen later. |
+| D4 | A champion dies: what happens to its pool copies? | **Return them to the pool, no refund.** Otherwise deaths shrink the pool for good and an endless run dries the shop up. A dead star-up returns every copy it is worth. |
+| D5 | How do champions pick targets? | **Nearest enemy in range by hex distance**; hold until it dies, becomes untargetable, or leaves range. No free-hex test, because champions don't move. |
+| D6 | Which attributes exist now? | **Health, MaxHealth, AttackDamage, AttackSpeed.** Mana and Armor arrive with the first cast ability, which is where they do something. |
+| D7 | What does an attack do? | **Instant damage on activation** in Phase 2 (3.8 adds the hit delay from D16), cooldown `1 / AttackSpeed`. No windup or projectile. |
+| D8 | Star-up and HP | **Star-up keeps the HP fraction** (max HP grows, current HP scales with it). Stat multipliers are placeholders: ×1.8 health and ×1.5 damage per level; attack speed and range stay flat (decided). |
+| D9 | Paid heal shape | **1 gold per 20% of MaxHealth**, one step per press, prep only. Hover the unit (or carry it) and press `H`, mirroring sell's `E`. Debug-grade UI. |
+| D10 | Damaged-sell rule (`DESIGN.md` §4) | **Not built.** Until it exists, selling and rebuying launders damage. Known, accepted for this checkpoint; don't test heal pricing that way. |
+| D11 | Unit cap | **Flat config value**, placeholder **10**, marked unresolved, on `DA_BoardConfig`. It counts board champions only. A cap of 6 or less makes a full-row wall impossible, so tune it down during 4.2. The growth formula is deferred. |
+| D12 | Where do spawn hexes live? | **A level-placed C++ actor** holding the array and `SpawnInterval`, not a level Blueprint graph. The array is data on the placed instance and needs no graph. |
+| D13 | Wave data shape | **`DT_Waves`**, one row per wave, each row a roster of `{EnemyData, count}`. Waves past the table repeat the last row. The endless scaling formula is out of scope. |
+| D14 | `SpawnInterval` starting value | **1.5 s**, marked unresolved, tuned in 1.7 against the 3.5 s crossing time. |
+| D15 | Animation | **Walk, basic attack and death are in scope** (1.8, 3.8), played from C++ as montages on the `UpperBody` slot that every stock Paragon ABP already has (`ANIMATION_FINDINGS.md`). No new or edited Animation Blueprints; the Paragon folders stay as imported. The clips are fields you assign on the data assets. Ability animations wait for mana. |
+| D16 | When does an attack's damage land? | **After a per-unit `AttackHitDelaySeconds`** (a data field, tuned by eye), because no montage in the packs has an impact notify to hang it on. It fizzles if the target died or became untargetable during the delay. Phase 2 stays instant until 3.8 adds it. |
 
-The reason `CLAUDE.md` puts the walking enemy first is sound: it establishes board crossing time,
-and every other number is tuned against it. Task **7.1** preserves that — a debug path walker with
-no AI, no combat, and no enemy class, purely to measure crossing time before this checkpoint
-closes.
+---
 
-This is the only sanctioned departure. Everything else in `CLAUDE.md` applies in full.
+## Carried forward from Checkpoint 1
+
+- **Crossing time:** empty board is 7 hexes; at **2 hexes/s** that is **3.5 s**. This seeds
+  `EnemyData` speed and `SpawnInterval`. `OccupiedTileCost` (100, on `DA_BoardConfig`) must exceed
+  the longest detour.
+- **`UHexGrid::SetOccupant` overwrites.** It does not check occupancy, which is right for
+  placement and wrong for a unit racing another into a hex. Task 1.1 adds a claim that fails.
+- **`ADebugPathWalker` is throwaway.** Delete it and `SpawnPathWalker` when `EnemyBase` walks (1.7).
+  Keep `FHexPathfinder` and its tests.
+- **Star-up exists.** Units can be destroyed by merging, selling, and (new) dying. None recreates.
+- **The unresolved damaged-sell rule** (`DESIGN.md` §4) waits on HP, which arrives in Phase 2, but
+  is not built here (D10).
+- **Still open, deliberately:** leak cost, aggro radius beyond range, checkmate, scoutable wave UI.
 
 ---
 
 ## Invariants that bind this checkpoint
 
-From `CLAUDE.md`. Restated because each one has a concrete consequence in the tasks below.
+From `CLAUDE.md`, restated because each has a concrete consequence below.
 
-**Grid is data, not actors.** Flat array of tile structs; visual meshes read from it. Nothing
-queries an actor for tile state — including the mouse-picking code in Phase 3. If a task seems to
-need a trace, the tile struct is missing a field.
+**One unit per tile, priced by the search, enforced by the step.** An enemy claims its next hex
+when it *begins* the step and releases the one it left. Checking on arrival lets two enemies
+mid-move into one hex both complete. Drift may decide who wins a race; it never puts two units on
+one tile.
 
-**Axial `(q, r)` storage, cube for distance.** Never store offset coordinates.
+**Movement is one hex at a time, no stored path.** On each arrival, target check first. Locked and
+in range: stop and attack. Locked and out of range: step toward a free hex within range of it. No
+target: step toward the exit. "Toward" is lower *path* distance, never raw hex distance.
 
-**Pointy-top, odd-r offset, parity fixed once.** This plan locks **odd rows shift right (+X)**.
-Never flip it.
+**Targeting stays out of GAS.** `TargetingComponent` selects; the ability receives the target as
+data. No `AGameplayAbilityTargetActor`. `State.Untargetable` is a tag the scan filters on.
 
-**Terrain blocks pathing outright; units block it at a flat cost.** Pathing arrives in 7.1. The
-data model is unchanged: `Occupant` and `bIsWalkable` are **independent fields**. Do not write
-`bIsWalkable = Occupant == nullptr`. It is convenient and it destroys the terrain hook. The
-pathfinder reads both: not walkable is impassable; occupied is passable to the search at one flat
-cost, the same for every unit (never HP, tier, or team).
+**Nearest uses path length; in range uses hex distance.** Range checks never run the search.
+Acquisition is two conditions (in range **and** a free hex within range, the enemy's own hex
+counting), filtered *before* ranking survivors by path length.
 
-**One unit per tile.** `Occupant` is a single reference, not a list. Champions and enemies both
-occupy exclusively — no stacking. This does not contradict the invariant above: the search may
-route through an occupied tile at a cost, but a unit never *enters* one — the occupancy check on
-the step enforces it. Placement (5.1) enforces this for placement; the 7.1 walker inherits it for
-movement.
+**Enemy range is 1 or 2 hexes.** Never scaled with wave number. Stored in hexes.
 
-**Per-tile flags independent:** `bIsSpawn`, `bIsPlaceable`, `bIsWalkable`, plus occupant and
-terrain refs.
+**Execution-order drift is accepted.** No stable processing order, no deterministic tie-break, no
+replay guarantee. Do not add one.
 
-**Player zone depth is config, never a constant.** Currently 5 rows / 35 hexes. Never hardcode it
-or derive from it. "Front 5 rows" is from the player's viewpoint and means the **high** row
-indices — rows 3–7, row 7 being the back row adjacent to the exit. Rows 0–2 are the enemy
-side. Derive the zone as rows `BoardDepth - PlaceableRowCount` .. `BoardDepth - 1`.
+**Units persist across waves.** HP lives on the unit's ability system component and survives
+because the actor does. No wave-reset path may destroy and recreate units.
 
-**Range is measured in hexes.** Store as a tile count, convert at query time. No ranges are used
-this checkpoint; store them in hexes anyway.
+**GAS owns** health, attack damage, attack speed, abilities and their cooldowns, and stat effects
+such as the star multiplier. **GAS does not own** target selection.
 
-**Expose anything with no other way to change it.** Per `CLAUDE.md`, if a value can only be
-changed by editing C++, it is `EditAnywhere` on its config or data asset. In this checkpoint that
-means `BoardWidth`, `BoardDepth`, `PlaceableRowCount`, `HexRadius`, every economy number in 0.4,
-every champion stat in 4.3, camera zoom and pitch, drag thresholds, and the spawn-enabled flags in
-1.6. Values that already have a non-code way to change them — a unit's coordinate, a tile's
-occupant — get setters and pure getters instead. If a variable's side of that line is unclear,
-ask rather than guessing.
+**Traits are GameplayTags.** No trait effects this checkpoint, so nothing new touches them.
 
-**Grid pathfinding, not NavMesh.** Applies to task 7.1.
+**Blueprint exposure.** Every number below that is a tuning value is `EditAnywhere` on its data
+asset or config. Live runtime state (HP, target lock, current coordinate) gets getters, not
+`EditAnywhere`.
 
-**Traits are GameplayTags.** Not `FName`, not an enum, not a string. See Phase 0.3.
-
-**No GAS this checkpoint.** `CLAUDE.md` says introduce GAS at Step 2. Checkpoint 1 sits before
-Step 1, so there is no AttributeSet, no AbilitySystemComponent, and no GameplayEffects. Champion
-stats are stored on `ChampionData` as **initialization data for a future AttributeSet** — plain
-values, read by nothing, feeding a GAS AttributeSet in a later checkpoint. Do not build a
-stat system that GAS will later have to displace.
-
-**No unit cap this checkpoint.** A cap on units placed is planned, value undecided, and belongs to
-the enemy checkpoint. Do not add a cap check to placement and do not invent a number.
-
-**Buying puts a champion on the bench, never on the board.** Every champion reaches a hex by being
-dragged there. The only exception is the debug console command in 4.5. Bench slots are not hexes
-and never enter the tile array.
+**Not built, per `CLAUDE.md`:** a chosen leak cost (counter and event only; forfeited kill gold
+needs no code), an HP crystal, line-of-fire
+blocking, a ranged archetype, Runners.
 
 ---
 
 ## Layout
 
-Per `CLAUDE.md`. Only the folders this checkpoint touches:
+New this checkpoint; nothing else is created.
 
 ```
 Source/Terrabound/
-├── Grid/           HexCoordinates, HexTile, HexGrid, HexGridVisualizer
-├── Pathfinding/    HexPathfinder            (task 7.1 only)
-├── Units/          BoardUnitBase, ChampionBase
-├── Economy/        ShopSystem, EconomyState, Bench
-├── Data/           ChampionData, BoardConfig
-└── TerraboundSettings.h   UDeveloperSettings holding the BoardConfig reference (1.4)
-
-Content/Terrabound/
-├── Blueprints/     Grid/ Champions/ Core/
-├── Data/           Champions/ Traits/ DA_BoardConfig
-├── Levels/
-├── UI/
-└── Materials/
-
-Content/ (root, outside Terrabound/) — Paragon<CharacterName>/, one folder per
-imported pack, left exactly where the importer puts it and exactly as imported
+├── Units/          + EnemyBase
+├── Combat/         + TargetingComponent, TargetingRules
+├── Abilities/      + CombatAttributeSet, GA_BasicAttack, damage/heal/star GameplayEffects
+├── Waves/          + WaveManager, WaveDefinition, SpawnHexConfig
+└── Data/           + EnemyData
 ```
 
-Do not create `Combat/`, `Abilities/`, `Terrain/`, or `Waves/` this checkpoint. Empty scaffolding
-for unbuilt systems is on the "do not scaffold" list.
+**Deliberately not created:** `Terrain/`, `EnemyAssassin`, `TargetableInterface` (every target is
+already a `BoardUnitBase`; an interface with one implementer is scaffolding), and `CombatResolver`
+(damage is a GameplayEffect executed by the attribute set, which is the resolution).
 
-**Every task is tagged with who does it**, per `CLAUDE.md`'s division of labour:
+Content adds `Data/Enemies/` and `Data/Waves/`. Per `CLAUDE.md`, enemy stats live in data assets,
+not Blueprints.
 
-- **[C++]** — Claude writes it directly. 22 of the 40 tasks.
-- **[Editor]** — the owner does it in the Unreal Editor. Claude specifies exactly what to create
-  (asset name, parent class, folder, values) and hands it over. Tasks 0.6, 2.1, 2.3, 4.1, 6.5, 7.2.
-- **[C++ + Editor]** — both, with a `C++:` / `Editor:` line under the tag saying which half is
-  which. Usually a C++ class plus the content asset created from it.
-
-An editor step does not block a task. Hand it over, write the C++ side, and carry on.
-
-**C++ / Blueprint split** per `CLAUDE.md`'s table: C++ owns the tile struct, grid array, board
-generation, and economy state. Blueprint owns champion variants (derived from `ChampionBase`),
-UI widgets and shop layout, tuning data, and level setup including spawn hex configuration.
+**Every task is tagged with who does it:** **[C++]** (Claude), **[Editor]** (you; Claude specifies
+asset name, parent class, folder and values), or **[C++ + Editor]** with a line for each half. An
+editor step never blocks a task: hand it over, write the C++ side, carry on.
 
 ---
 
-## Hex math reference
+# Phase 1 — Enemies walk
 
-Pointy-top, odd-r offset, odd rows shifted right. `R` = hex circumradius.
+No combat, no GAS. An enemy spawns, crosses, exits, and is counted.
 
-**Axial → world (2D, before projecting onto the board plane):**
-```
-x = R * (sqrt(3) * q  +  sqrt(3)/2 * r)
-y = R * (3.0/2.0 * r)
-```
-
-**Offset (col, row) → axial:** `q = col - (row - (row & 1)) / 2` , `r = row`
-
-**Axial → cube:** `x = q`, `z = r`, `y = -x - z`
-
-**Axial distance:** `(abs(q) + abs(q + r) + abs(r)) / 2`
-
-**Axial neighbours:** `(+1,0) (+1,-1) (0,-1) (-1,0) (-1,+1) (0,+1)`
-
-**Forward moves toward the exit** (increasing `r`) are `(0,+1)` and `(-1,+1)` — two diagonals,
-no straight-ahead neighbour, so movement zigzags. Intended, per `DESIGN.md`.
-
-**World → axial** needs fractional axial coords then **cube rounding**: round all three cube
-components, then correct the one with the largest rounding error. Rounding q and r independently
-produces wrong tiles near edges, and those bugs present as pathing or input bugs.
-
-Standard reference for all of the above: the Red Blob Games "Hexagonal Grids" article.
-
----
-
-# Phase 0 — Setup
-
-### 0.1 Module and folders  
+### 1.1 Claimable occupancy (`Grid/`)
 **[C++]**
-Create `Source/Terrabound/` with the folders listed in Layout. Project compiles clean.
+`UHexGrid::TryOccupy(Coord, Unit)`: succeeds only if the tile exists and has no other valid
+occupant; sets it and broadcasts `OnOccupancyChanged`. Placement keeps using `SetOccupant`, which
+already checks legality itself. An enemy calls `TryOccupy` on the next hex when it begins a step
+and `ClearOccupant` on the hex it leaves, at the same moment.
 
-### 0.2 `BoardConfig` (`Data/`)  
-**[C++ + Editor]**
-**C++:** the `UPrimaryDataAsset` class and its fields.  
-**Editor:** create `DA_BoardConfig` from it and fill the values.
+**Done when:** a headless test shows a second claimant on the same tile fails, and the tile never
+holds two units however the claims interleave.
 
-`UPrimaryDataAsset`: `BoardWidth` (7), `BoardDepth` (8), `PlaceableRowCount` (5), `HexRadius`.
-Content asset at `Content/Terrabound/Data/DA_BoardConfig`. `HexRadius` is filled in by task 0.6.
-
-**Spawn hexes do not live here.** `CLAUDE.md` specifies a **per-level** array of enabled spawn
-tiles, configured in level setup. Defer to the enemy checkpoint; do not add a field for it now.
-
-**Done when:** changing `BoardWidth` changes the generated grid with no recompile.
-
-### 0.3 GameplayTags for traits  
-**[C++ + Editor]**
-**C++:** enable the GameplayTags module in `.Build.cs` and add native tag declarations if used.  
-**Editor:** create the tag table asset and add `Trait.Woodland` / `Trait.Bruiser`.
-
-Enable the GameplayTags module and declare `Trait.Woodland` and `Trait.Bruiser` in a tag table
-at `Content/Terrabound/Data/Traits/`.
-
-Exactly two traits, per MVP scope. Tags carry **no effects** this checkpoint — they are counted
-for display only. This is not GAS; GameplayTags is a separate, cheap module, and using it now is
-what prevents the parallel trait system `CLAUDE.md` forbids.
-
-**Done when:** both tags resolve and are assignable on a data asset.
-
-### 0.4 Economy placeholder config  
-**[C++ + Editor]**
-**C++:** the config class or data asset type, and every accessor that reads it.  
-**Editor:** create the asset and enter the placeholder numbers.
-
-One config file or data asset holding every economy number, each marked as a placeholder.
-
-From `DESIGN.md` §4:
-- `TierCostTable` — cost by tier, 1/2/3. **Cost is derived from tier, TFT-style.** It is not
-  stored per champion; see 4.3.
-- `BaseIncomePerWave` — 5
-- `StartingGold` — not specified in `DESIGN.md`; pick a value, mark it unresolved
-- `RerollCost` — not specified in `DESIGN.md`; pick 2, mark it unresolved
-- `ShopSlotCount` — 5
-- `BenchSlotCount` — 6
-- `SellRefund` — full purchase price
-
-**One carve-out:** the champion pool's tier→size and tier→roll-odds tables live in their own data
-table (task 6.2), not here. They are a distribution rather than a scalar, they are edited as a unit,
-and a table is the right shape for them. Still placeholder numbers, still marked as such. Nothing
-else gets this exemption.
-
-**Done when:** no economy number exists anywhere else in the project. Shop slot count, bench slot
-count, and champion cost are all read from here, not from a literal in `ShopSystem`, `Bench`, or
-a champion data asset.
-
-### 0.5 Debug panel  
+### 1.2 `EnemyData` and `EnemyBase` (`Data/`, `Units/`)
 **[C++]**
-Toggleable on-screen widget or console command set. Starts near-empty; every phase adds to it.
-Never remove from it.
+`UEnemyData` (`UPrimaryDataAsset`): `DisplayName`, `SkeletalMesh`, `AnimBlueprint` (idle only,
+D15), `MaxHealth`, `AttackDamage`, `AttackSpeed`, `RangeInHexes` (1 or 2, validated), `MoveSpeedHexesPerSecond`
+(seed **2.0**, in hexes per second so a `HexRadius` change never retunes it), `GoldOnKill`
+(placeholder 1, D3). Stat fields are init data for Phase 2, read by nothing until then, except
+speed.
 
-### 0.6 Import one Paragon character, set `HexRadius`  
+`AEnemyBase : ABoardUnitBase`: `Team` is Enemy (the tint hook already exists),
+`InitializeFromEnemyData`. Spawned generically like `AChampionBase` and initialised from its data
+asset; **no per-enemy Blueprint**.
+
+Walking, ported from `ADebugPathWalker`: on each arrival, ask `FHexPathfinder` for the next hex
+toward the exit (distance field seeded at the back row); begin the step with `TryOccupy`; time left
+over after an arrival carries into the next step so crossing time is frame-rate independent. If
+the claim fails, hold and re-decide next tick. Face the step direction. On reaching the back row:
+release the tile, fire `OnEnemyExited`, destroy.
+
+**Done when:** an enemy spawned by console crosses the empty board, exits, and logs its crossing
+time; a lone champion in its lane is routed around; it never enters an occupied hex.
+
+### 1.3 Spawn hex config (`Waves/`)
+**[C++ + Editor]**
+**C++:** `ASpawnHexConfig`, a level-placed actor with `TArray<FHexCoord> SpawnHexes` and
+`SpawnInterval` (D12, D14). On `BeginPlay` it calls `UHexGrid::SetSpawnFlag` for each hex and hands
+`SpawnInterval` to `UWaveManager`. It logs an error for any hex in the player zone. The grid never
+holds a copy of the array; this is a value read once at startup.
+**Editor:** place one in `MainBoard`, set 3 far-edge spawn hexes.
+
+**Done when:** the flagged hexes render as spawn hexes and are not placeable. The `SetSpawnFlag`
+console command may stay as a debug tool.
+
+### 1.4 `WaveManager` (`Waves/`)
+**[C++]**
+`UWorldSubsystem` owning the run's flow.
+
+- **Phase:** `Prep` or `Combat`, `GetPhase()`, `OnPhaseChanged`. `StartWave()` is valid only in
+  Prep, and refuses while a unit is carried (same reason `CanBuy` does).
+- **Waves:** `FWaveRow : FTableRowBase` holds a roster of `{TSoftObjectPtr<UEnemyData>, Count}`
+  (D13). `DT_Waves` is registered in `UTerraboundSettings` like the pool tables. Waves past the
+  table repeat the last row.
+- **Spawn pacing:** a spawn happens when `SpawnInterval` has elapsed for that hex **and** a
+  `TryOccupy` on it succeeds. The timer sets the rate; occupancy only ever delays.
+- **Resolution:** the wave ends when the roster is fully spawned and no enemy is alive. Back to
+  Prep, `WaveIndex` up. No timer, and no income is granted here (D3): gold comes only from kills.
+  Remove the unused `BaseIncomePerWave` field from `EconomyConfig`.
+- **Leaks:** `OnEnemyExited` increments `LeaksThisWave` and `LeaksTotal`, logged per wave and
+  cumulatively. **No cost, no HP bar, nothing that reads the counter.**
+- **Debug:** `StartWave`, `WaveDump`.
+
+**Done when:** `StartWave` runs a small wave: enemies spawn paced, cross, exit, are counted, and
+the wave resolves back to Prep. (Nothing earns gold yet: enemies only exit in this phase. Kills, and
+so income, arrive in 2.2.)
+
+### 1.5 Prep-phase gating (`Input/`, `Economy/`)
+**[C++]**
+While `Combat`: `ShopSystem::CanBuy`, `Buy`, `Reroll` and `Sell` refuse; `BoardPlayerController`
+refuses pickup and drop (D1). `StartWave` refuses while carrying, so no drag is ever live when
+combat begins. Only *spending* locks: the gold counter keeps updating during Combat (D3).
+
+**Done when:** in Combat the shop cards grey and no unit can be lifted; in Prep everything behaves
+as before.
+
+### 1.6 Enemy assets and first waves
 **[Editor]**
-Import a single character from the free Epic Paragon packs on Fab, left wherever the
-importer puts it at `Content/` root (e.g. `Content/ParagonLtBelica/`) and exactly as
-imported — never moved into `Content/Terrabound/`. Stand it in the level next to a
-placeholder hex and pick a `HexRadius` that reads correctly at roughly the Phase 3.1
-camera distance. Write the number into `DA_BoardConfig`.
+Create in `Content/Terrabound/Data/Enemies/`: `DA_Enemy_A` (`RangeInHexes` 1) and `DA_Enemy_B`
+(`RangeInHexes` 2), from `UEnemyData`, reusing already-imported Paragon meshes (the team tint tells
+the sides apart). Placeholder stats, marked unresolved. Create `DT_Waves` in `Data/Waves/`
+(row struct `FWaveRow`) with waves 1–3, small rosters mixing both enemies, and point
+`UTerraboundSettings` at it.
 
-**This is here, not in Phase 4, on purpose.** Task 2.1 sizes the tile mesh from `HexRadius` and 2.2
-builds the whole board from it. Importing characters afterwards means discovering the scale
-mismatch — which the Known Issues section below predicts — with the board already built, and
-redoing 2.1 and 2.2. One character is enough to fix the radius; the rest come in 4.1.
+**Done when:** `StartWave` in PIE spawns wave 1's roster from data.
 
-Per `CLAUDE.md`, leave the pack exactly as imported.
+### 1.7 Measure and retire the walker
+**[C++ + Editor]**
+Watch a real wave. Record the crossing time from the enemy's own log against the 3.5 s from
+Checkpoint 1, and how the stream looks against `SpawnInterval` (one lump, or a stream with an
+opening, a middle and a tail). Tune `SpawnInterval`. Then delete `Debug/DebugPathWalker.*` and the
+`SpawnPathWalker` command; keep `FHexPathfinder` and its tests.
 
-**Done when:** `HexRadius` is set from a real character's footprint, not guessed.
+**Expected, not a bug:** a full row of champions stops the wave forever here, because nothing
+fights yet. Test waves with a gap. Task 3.2 removes this.
 
----
+**Done when:** crossing time and the `SpawnInterval` verdict are written into this task as a
+result, as in Checkpoint 1's 7.1, and the walker is gone.
 
-# Phase 1 — Grid data
+### 1.8 Walk animation (`Units/`, `Data/`)
+**[C++ + Editor]**
+**C++:** `UEnemyData` gains `WalkAnimation` (a `UAnimSequence`) and `WalkPlayRate`. `UTerraboundSettings`
+gains `AnimMontageSlotName` (`UpperBody`, config: it is the same in all four packs and would only
+change for a non-Paragon pack). `ABoardUnitBase` gets start and stop calls that play the sequence
+as a looping dynamic montage on that slot. `AEnemyBase` starts it when a step begins, does not
+restart it between consecutive steps, and stops it when the enemy holds, attacks or exits.
+**Editor:** set `WalkAnimation` on each `DA_Enemy_*` to the pack's `Jog_Fwd`, and tune
+`WalkPlayRate` by eye so the feet don't slide at 2 hexes/s.
 
-### 1.1 `HexCoordinates` (`Grid/`)  
-**[C++]**
-`FHexCoord` struct: `int32 Q, R`. Equality, `GetTypeHash`, `ToString`.
-Static pure helpers in the same header: `AxialToCube`, `AxialDistance`, `GetNeighbours`,
-`OffsetToAxial`, `AxialToOffset`, `AxialToWorld2D`, `World2DToAxial` (with cube rounding).
-Pure functions only — no world access, no side effects. This makes them testable and keeps
-coordinate math out of actor code.
-**Done when:** usable as a `TMap` key and callable from Blueprint.
+**Why a montage, from the findings (`ANIMATION_FINDINGS.md`):** the stock ABPs read velocity through
+`TryGetPawnOwner`, which is null for our actors, so their locomotion variables never leave 0 and the
+walk states never run. The clips are in-place (1.3 to 2.0 s, no root motion), and the ABP's own
+`JogStart`/`JogStop` clips are 1.9 to 5.1 s for three heroes, so driving those variables from C++
+is worse than playing `Jog_Fwd` directly. With `IsAccelerating` false, a montage on `UpperBody`
+drives the whole body, the same route the spawn animation already takes.
 
-### 1.2 Coordinate round-trip tests  
-**[C++]**
-Automation tests: world → axial → world returns the same hex for all 56 tiles and for random
-points inside each. Neighbour symmetry holds across the whole board, **both row parities**.
-**Done when:** tests pass. **Do not proceed with failing tests.** Every system downstream inherits
-these bugs, and they surface disguised as input and pathing bugs.
+**Spike first.** Confirm three things before building the rest: a looping dynamic montage on
+`UpperBody` plays full-body on a non-pawn actor; it overrides the 5 s `LevelStart` montage the ABP
+starts at spawn (enemies must not stand through it); and the loop is seamless.
 
-### 1.3 `HexTile` (`Grid/`)  
-**[C++]**
-`FHexTile`: `FHexCoord Coord`, `bool bIsSpawn`, `bool bIsPlaceable`, `bool bIsWalkable`,
-`TWeakObjectPtr<ABoardUnitBase> Occupant`, `TWeakObjectPtr<AActor> Terrain`, `float PathCost`.
-Fields independent. `Terrain` is declared now and stays null all checkpoint.
-
-**`ABoardUnitBase` does not exist until 4.2. Forward-declare it** — `class ABoardUnitBase;` at the
-top of the header. `TWeakObjectPtr` needs nothing more, and the struct is complete now rather than
-being revisited later. **Do not create a stub class** (that is scaffolding, which `CLAUDE.md`
-forbids) and **do not weaken the type to `AActor`** as a placeholder — that placeholder never gets
-tightened back up.
-
-`Occupant` is a single reference because **one unit stands on a tile at a time**, champion or
-enemy, no stacking. It is not a list. Per `CLAUDE.md`, occupiable and walkable are separate
-questions: `bIsWalkable` says terrain permits a path across the tile, `Occupant == nullptr` says a
-unit may stand on it.
-
-**Done when:** compiles with only a forward declaration; occupancy and walkability are separate
-fields.
-
-### 1.4 `HexGrid` (`Grid/`)  
-**[C++]**
-Flat `TArray<FHexTile>` owned by a `UWorldSubsystem`. Generates from `BoardConfig` on world init.
-Index ↔ coord conversion. Accessors: `GetTile`, `IsValidCoord`, `SetOccupant`, `ClearOccupant`,
-`GetPlayerZoneTiles`.
-
-**How the subsystem finds `DA_BoardConfig`:** a `UDeveloperSettings` class
-(e.g. `UTerraboundSettings`), registered under Project Settings, holds a
-`TSoftObjectPtr<UBoardConfig>` pointing at the content asset. `HexGrid` reads
-the settings singleton and resolves the soft reference on world init. One
-place to point at the config, editable from Project Settings without touching
-a level, and never duplicated per-level. Do not hardcode the asset path, and
-do not require a level Blueprint to wire the reference in — that would make
-board generation depend on level setup, which contradicts "generates on world
-init."
-
-Rows `0 .. BoardDepth - PlaceableRowCount - 1` are the enemy side; the rest are placeable, derived
-from config at generation time.
-**Done when:** 56 tiles, 35 placeable, and setting `PlaceableRowCount` to 6 yields 42 with no code
-change.
-
-### 1.5 Debug: grid state dump  
-**[C++]**
-Console command printing tile count, placeable count, and any tile's full state by coord.
-
-### 1.6 Set `bIsSpawn` on a tile  
-**[C++]**
-Two entry points, both hitting the same C++ function on the `HexGrid` subsystem:
-
-- Console command `SetSpawnFlag <q> <r> <0|1>` — debug only.
-- `UFUNCTION(BlueprintCallable) SetSpawnFlag(FHexCoord Coord, bool bEnabled)` — callable from a
-  level Blueprint so spawn tiles can be toggled during level setup without a recompile.
-
-Spawn configuration proper is deferred to the enemy checkpoint (see 0.2), so nothing else this
-checkpoint sets `bIsSpawn`. Without this, the spawn case in task **5.1** cannot be constructed and
-that test cannot be written.
-
-**This is a function, not exposed state.** Do not mark `FHexTile` or any of its fields
-`UPROPERTY(EditAnywhere)` / `BlueprintReadWrite`. A Blueprint asks the grid to change a flag; the
-grid still owns the array.
-
-**What is forbidden is a Blueprint-held copy of live tile state**, which can drift out of sync with
-`HexGrid` and produce two sources of truth that silently disagree. A per-level array of spawn
-coordinates that the grid reads *once at generation* is not that — nothing reads it after startup,
-so it cannot drift. `CLAUDE.md` endorses that array as the eventual designer workflow, and it
-arrives with the enemy checkpoint alongside the rest of spawn configuration (see 0.2).
-
-This setter is the Checkpoint 1 stand-in for it, existing so 5.1 has a fixture and so a level
-Blueprint can flag tiles before the generation-time path exists. Keep it a setter; do not add the
-array early, and do not treat this task as forbidding the array later.
-
-**Done when:** 5.1's spawn-rejection test can set up its own fixture, a level Blueprint can flag
-spawn tiles, and the 1.5 dump reflects changes made from either entry point.
+**Done when:** enemies visibly walk their route, stop walking when they hold or exit, and are not
+held up by the spawn animation.
 
 ---
 
-# Phase 2 — Board visuals
+# Phase 2 — GAS and the first champion that shoots
 
-Deliberately cheap. Do not spend time here; it gets replaced.
+### 2.1 GAS foundation (`Abilities/`, `Units/`)
+**[C++ + Editor]**
+**C++:** add `GameplayAbilities` and `GameplayTasks` to `Terrabound.Build.cs`; confirm the
+`GameplayAbilities` plugin is enabled in `Terrabound.uproject` (`Terrabound.uproject` lists
+`GASToolsets`, which may not imply it; add the entry if it's missing). Put a `UAbilitySystemComponent` on `ABoardUnitBase` and implement
+`IAbilitySystemInterface`, so champions and enemies share one setup. `UCombatAttributeSet`:
+`Health`, `MaxHealth`, `AttackDamage`, `AttackSpeed` (D6), plus a meta `IncomingDamage`. Both
+`InitializeFromChampionData` and `InitializeFromEnemyData` write the data asset values into the
+attribute set, with `Health` starting at `MaxHealth`. The stat fields on the data assets stop
+being "read by nothing".
+**Editor:** none expected beyond the plugin check.
 
-### 2.1 Hex tile mesh  
+Budget real time here: the first ability is where GAS setup costs are paid.
+
+**Done when:** a `DumpAttributes` console command prints a board unit's attributes and they match
+its data asset.
+
+### 2.2 Damage, death and kills (`Abilities/`, `Units/`)
+**[C++]**
+A damage GameplayEffect writes `IncomingDamage` (magnitude by caller); the attribute set applies it
+to `Health` in `PostGameplayEffectExecute`, clamps at 0 and clears the meta attribute. At 0, once:
+add tag `State.Dead` and fire the unit's death event.
+
+- **Enemy death:** grant `GoldOnKill` through a new `UEconomyState::GrantIncome(Amount)`, which
+  does `Add` and broadcasts `OnIncomeGranted(Amount)` (refunds keep using plain `Add`, so a sell
+  shows no `+N`); clear its tile, tell `WaveManager`, destroy.
+- **Champion death (D4):** clear its tile, return every pool copy its star level is worth (extract
+  `Sell`'s copy-return into a shared helper), destroy. No refund. Dead stays dead.
+
+`State.Dead` and `State.Untargetable` are declared as native GameplayTags in C++, so no tag-table
+edit is needed.
+
+**Done when:** a `DamageUnit <q> <r> <amount>` debug command kills a unit through the real path,
+its gold and pool effects land, and a unit reduced below full HP keeps that HP across a wave.
+
+### 2.3 `TargetingComponent` (`Combat/`)
+**[C++]**
+One component on every board unit. It holds the lock (a weak reference), and `TargetingRules`
+holds the pure rule functions (`IsInRange` by hex distance, more in 3.1) so they are testable
+without actors.
+
+Champion mode (D5): with no lock, scan every tick for the nearest live, targetable enemy in range;
+acquire. With a lock, hold. **Drop the lock, as one general mechanism, when the target dies, gains
+`State.Untargetable` or `State.Dead`, or leaves range**, then re-scan. This is not a stealth
+special case; anything later just applies the tag.
+
+**Done when:** a headless test covers `IsInRange` and the candidate filter (dead and untargetable
+are skipped).
+
+### 2.4 Basic attack (`Abilities/`)
+**[C++]**
+`UGA_BasicAttack`, granted at init to every board unit (no Blueprint needed). When the component
+holds a target in range and the ability is off cooldown it activates: apply the damage effect to
+the target with the attacker's `AttackDamage` (D7), and commit a cooldown effect whose duration is
+`1 / AttackSpeed`. The component picks the target and passes it in as data. No damage-type or armor
+maths.
+
+**Done when:** a range-2+ champion kills an enemy standing in its range, at the attack rate its data
+implies.
+
+### 2.5 Star-level stat effect (`Abilities/`)
+**[C++]**
+`AChampionBase::SetStarLevel` applies a GameplayEffect with multiplicative modifiers on `MaxHealth`
+and `AttackDamage` (replacing any earlier star effect). The magnitudes are two arrays in
+`UTerraboundSettings` next to `StarMeshScaleMultipliers`: placeholders ×1, ×1.8, ×3.24 health and
+×1, ×1.5, ×2.25 damage. **Attack speed and range are never touched** (decided). Current `Health`
+scales with `MaxHealth` so the HP fraction is kept (D8).
+
+**Done when:** merging two units to a 2-star raises max HP and damage by the configured factors and
+leaves the HP fraction unchanged.
+
+### 2.6 Debug health overlay
+**[C++]**
+`HealthOverlay` toggles per-tick debug text above every board unit: current and max HP, star level.
+A real HP bar is UI and waits. Also `SetUntargetable <q> <r> <0|1>` for 3.5.
+
+**Done when:** damage, persistence across a wave, and star scaling are all readable on screen.
+
+### 2.7 Paid heal (`Economy/`, `Input/`)
+**[C++]**
+`EconomyConfig` gains `HealStepFraction` (0.2) and `HealCostPerStep` (1), placeholders (D9).
+`UShopSystem::Heal(Unit)` beside `Sell`, since both are gold-for-unit transactions: prep only,
+refuses at full HP or without gold, applies an instant heal effect of one step. `BoardPlayerController`
+binds `H` to the carried unit, else the unit under the cursor (the pickup trace already finds it).
+The damaged-sell rule is **not** built (D10).
+
+**Done when:** a damaged champion heals 20% per press for 1 gold, and it refuses in Combat.
+
+### 2.8 Champion stats
 **[Editor]**
-6-sided cylinder scaled thin, rotated to a pointy-top profile. Made in-engine, no DCC tool. Sized
-from `HexRadius` with a small gap so borders read.
+On the four `DA_Champion_*` assets: set `MaxHealth`, `AttackDamage`, `AttackSpeed` and
+`RangeInHexes` so there are **two blockers** (range 1, high health) and **two shooters** (range 3,
+low health). Also check `Tier`: all four read 1 at one point in Checkpoint 1, and cost derives from it.
+Placeholder numbers.
 
-### 2.2 `HexGridVisualizer` (`Grid/`)  
-**[C++ + Editor]**
-**C++:** the visualizer actor, ISM component, and transform generation.  
-**Editor:** place it in the level and assign the 2.1 mesh.
+**Done when:** a shooter placed in a wave's lane kills a wave-1 enemy that walks into its range.
 
-One actor with a `UInstancedStaticMeshComponent`, one instance per tile, transforms from
-`AxialToWorld2D`. **Not 56 actors.** Reads from `HexGrid`; never writes to it.
-**Done when:** the 7×8 board renders, rows visibly stagger, and it reads as a TFT board rather
-than a ragged grid.
-
-### 2.3 Tile state material  
+### 2.9 Gold-gain popup
 **[Editor]**
-Per-instance custom data float driving colour. States: `Default`, `PlayerZone`, `EnemyZone`,
-`Hovered`, `ValidPlacement`, `InvalidPlacement`, `Occupied`.
-**Done when:** player zone is visually distinct from enemy zone and states are settable per-tile
-from C++.
+In the HUD widget (`WBP_HUD`), show a `+N` at the gold counter each time
+`UEconomyState::OnIncomeGranted` fires (D3), then fade it. The widget only displays the amount C++
+passes; it computes nothing. Several kills at once may stack or add up: your layout call.
+World-space popups at the enemy's position are polish and out of scope.
 
-### 2.4 Debug coordinate overlay  
-**[C++]**
-Toggleable `(q, r)` text at each hex centre. Used to verify Phase 3 by eye.
+**Done when:** each kill shows its `+N` and the counter rises by that amount; a sell or any other
+gold change shows no `+N`.
 
 ---
 
-# Phase 3 — Camera and controls
+# Phase 3 — Blockers and aggro
 
-### 3.1 Camera  
+### 3.1 Enemy acquisition (`Combat/`)
+**[C++]**
+Enemy mode for `TargetingComponent`, per `CLAUDE.md`. A candidate is a live, targetable champion
+that is (a) within `RangeInHexes` by hex distance **and** (b) has at least one hex within range of
+it that is unoccupied, the enemy's own hex counting. Filter on both **first**, then rank the
+survivors by path length. Add the pathfinder query that ranking needs (path length from an enemy's
+hex to a candidate, from the existing search). Scan every tick while unlocked.
+
+**Done when:** headless tests show (1) in range with every attack hex occupied is *not*
+acquirable, (2) the enemy's own hex counts as free, (3) "nearest" follows path length and can
+differ from hex distance, using a wall of units.
+
+### 3.2 Enemy decision loop (`Units/`, `Pathfinding/`)
+**[C++]**
+On each arrival, target check first:
+
+- **Locked, in range:** stop and attack.
+- **Locked, out of range:** distance field seeded at the *free hexes within range of the target*
+  (`ComputeDistanceField` already takes several sources), step to the lowest neighbour.
+- **No lock:** scan; if found, treat as above; otherwise the exit field, as in 1.2.
+
+A blocked step (1.2's failed claim) is a contested hex, handled in 3.3. Nothing is stored between
+arrivals.
+
+**Done when:** enemies walking a lane stop at a blocker and stay; a full row of champions no
+longer stalls the wave forever (the wall is attacked instead).
+
+### 3.3 Contested hexes
+**[C++]**
+The loser of a `TryOccupy` race drops its lock and re-scans on the same tick. Another free hex in
+range of the same champion means it re-acquires that champion. Only if none exists does it fall
+through to the exit. Dropping the lock is not walking away. Once per tick per enemy, so a
+pathological board cannot loop.
+
+**Done when:** a headless test with two enemies and one free attack hex shows exactly one
+succeeds and the other drops its lock; a stress test over many interleavings never leaves two
+units on a tile.
+
+### 3.4 Enemy attacks
+**[C++]**
+Enemies use the same `UGA_BasicAttack` against a locked target in range. A champion killed goes
+through the death path from 2.2.
+
+**Done when:** an unprotected shooter is killed by enemies that reach it, and its tile and pool
+copies are handled.
+
+### 3.5 Lock breaking, verified
+**[C++]**
+No new mechanism: this checks that 2.3's single drop path covers every case for enemies too.
+`SetUntargetable` (2.6) makes enemies locked on that champion drop and re-scan; a target whose
+last free attack hex gets filled makes the approaching enemy drop and fall back to the exit; a
+target killed by a shooter drops every enemy locked on it.
+
+**Done when:** each of those is observed in PIE and none needs a special case in the code.
+
+### 3.6 Unit cap (`Grid/`, `Input/`)
 **[C++ + Editor]**
-**C++:** camera actor, zoom and pitch clamps, exposed limits.  
-**Editor:** place it, frame the board by eye, save the values.
+**C++:** `UBoardConfig::UnitCap` (D11, placeholder 10, marked unresolved) and a derived read on
+`UHexGrid` for the count of board champions (enemies never count). Per `CLAUDE.md`'s settled
+details: bench units don't count; a swap, board to board or bench onto an occupied hex, never
+changes the count and is always allowed; only **bench to empty hex** is capped; the drag preview
+shows hexes invalid once the board is at the cap. A merge or a death lowers the count.
+**Editor:** the value in `DA_BoardConfig`.
 
-Fixed-angle camera looking down at the board, roughly TFT's framing. Zoom and slight pitch allowed;
-free orbit is not.
-**Done when:** all 56 hexes are on screen and legible at default zoom.
+**Done when:** at the cap a bench unit cannot be dropped on an empty hex but can swap; the preview
+marks hexes invalid; lowering the cap below the current count evicts nothing.
 
-### 3.2 Hex under cursor  
-**[C++]**
-Deproject the mouse to a ray, intersect the board's ground plane, convert the hit point with
-`World2DToAxial`.
-
-**Do not line-trace against tile or unit actors.** There are no tile actors, and tracing against
-units would couple input to rendering and quietly breach the grid-is-data invariant.
-**Done when:** hovering any point returns the correct hex, including near edges and corners,
-verified against the 2.4 overlay.
-
-### 3.3 Hover feedback  
-**[C++]**
-Hovered tile switches to `Hovered`. Clears on leaving the board.
-**Done when:** no flicker at tile boundaries.
-
-### 3.4 Click and drag  
-**[C++]**
-Left-click press to select, hold to drag, release to drop. Right-click or Escape cancels and
-returns the held champion to its origin. Dropping outside the board cancels.
-**Done when:** a placeholder can be picked up and dropped on another hex, and cancel reliably
-restores the original position.
-
----
-
-# Phase 4 — Champions
-
-### 4.1 Import the remaining Paragon assets  
+### 3.7 Roster and wave tuning
 **[Editor]**
-One character is already in from task **0.6**, and `HexRadius` is already fixed against it. Import
-the other 2–3 from the free Epic Paragon packs on Fab, each left wherever the importer puts it at
-`Content/` root — never moved into `Content/Terrabound/`.
+Set enemy and champion stats and wave rows so a wave-1 fight has a start, middle and end, and waves
+2–3 press harder. Placeholder numbers throughout.
 
-**Leave the packs exactly as imported.** Per `CLAUDE.md`, reorganizing them (moving them into
-`Content/Terrabound/` or reorganizing inside them) causes redirector pain for no benefit.
+**Done when:** a sensible board wins wave 1 without losing a unit and loses some HP by wave 3.
 
-**Watch for:** MOBA-scale, high-poly heroes. Do not change `HexRadius` to suit a later character —
-scale the character. The radius was fixed in 0.6 and the board is already built against it.
-**Done when:** all 3–4 skeletons and animation sets are intact and each character stands on a hex
-at a scale that reads correctly at the 3.1 camera distance.
-
-### 4.2 `BoardUnitBase` (`Units/`)  
-**[C++]**
-Shared base for champions and, later, enemies. Holds `FHexCoord CurrentCoord`, snap-to-hex
-positioning, and a team flag. Nothing champion-specific.
-
-Declared now because `ChampionBase` and `EnemyBase` both derive from it per `CLAUDE.md`'s layout,
-and retrofitting a base class under a live class later is worse than writing a thin one now.
-**Done when:** compiles, holds coordinate state, positions correctly on a hex.
-
-### 4.3 `ChampionData` (`Data/`)  
+### 3.8 Attack and death animations (`Units/`, `Abilities/`, `Data/`)
 **[C++ + Editor]**
-**C++:** the `UPrimaryDataAsset` class.  
-**Editor:** create the 3–4 champion assets and fill in tiers, meshes, anim BPs, and trait tags.
+**C++:** `UChampionData` and `UEnemyData` both gain `AttackMontages` (an array, cycled),
+`AttackHitDelaySeconds` (D16) and `DeathAnimation` (a `UAnimSequence`).
+- **Attack:** `ABoardUnitBase::PlayAttackAnimation(IntervalSeconds)` turns the unit to face its
+  target, plays the next montage, and speeds it up (never slows it) to fit inside the attack
+  interval. `UGA_BasicAttack` calls it on activation and applies damage after
+  `AttackHitDelaySeconds`, skipping the damage if the target died or became untargetable.
+- **Death:** the 2.2 death path calls `PlayDeathAnimation()`: disable the HitBox, play the clip as a
+  dynamic montage on the slot, destroy the actor when it ends. The tile is freed and `State.Dead`
+  is set at the moment of death, so a dying unit is neither targetable nor blocking.
 
-`UPrimaryDataAsset`: display name, tier (1–3), skeletal mesh, anim blueprint, and
-`FGameplayTagContainer Traits` populated from `Trait.Woodland` / `Trait.Bruiser`.
+**Editor:** on each data asset, assign montages (for example Grux's `PrimaryAttack_LA_Fast_Montage`
+and `PrimaryAttack_RA_Fast_Montage`), a death sequence, and tune the hit delay by eye per hero.
 
-**No `Cost` field.** Cost is derived from tier via the `TierCostTable` in the 0.4 config, TFT-style.
-Storing it per champion would put an economy number outside the one config file, which 0.4 forbids,
-and would let a champion's cost silently disagree with its tier.
+**From the findings:** attack montages already carry the `UpperBody` slot, so no slot setup is
+needed. None has an impact notify, only `SaveAttack` and `ResetCombo`; those cast the pawn owner
+and the casts fail harmlessly for our actors. Serath's A and B montages have a RateScale of 2.0.
+There are no death montages: Kwang and Serath have one death sequence each, Grux and Belica two.
+No clip uses root motion.
 
-Stat fields — max HP, attack damage, attack speed, **range in hexes**, and **max mana** — are
-**AttributeSet initialization data for a later checkpoint**. Store them; read them nowhere. Do not
-add current-HP tracking, damage application, mana gain/spend, or any runtime stat mutation. That
-is GAS's job at Step 2.
-
-**Max mana only, no ability reference yet.** `DESIGN.md`'s GAS section treats mana as universal —
-every champion gains it on attack and on damage taken, then casts at a threshold — so leaving it
-off this asset would be a gap, not a scope cut. But the ability it casts is out of scope here: a
-`TSubclassOf<UGameplayAbility>` field needs the `GameplayAbilities` module and an actual ability
-class, neither of which exist before GAS arrives at Step 2. The threshold is data; the ability is
-GAS's job.
-
-**Done when:** 3–4 assets exist with distinct tiers, each carrying one or both trait tags, and
-each one's cost resolves through `TierCostTable` rather than being stored on the asset.
-
-(`DESIGN.md` MVP says 2–3 champions; 3–4 is the owner's call for this checkpoint and costs
-nothing, since they are data assets.)
-
-### 4.4 `ChampionBase` (`Units/`)  
-**[C++ + Editor]**
-**C++:** `ChampionBase` and its initialisation from `ChampionData`.  
-**Editor:** the per-champion Blueprints deriving from it, in `Blueprints/Champions/`.
-
-Derives from `BoardUnitBase`. Initialised from a `ChampionData`. Idle animation only. Faces the
-enemy side.
-
-Per `CLAUDE.md`'s split, individual champions are **Blueprints deriving from `ChampionBase`**, in
-`Content/Terrabound/Blueprints/Champions/`. Do not create a C++ class per champion.
-**Done when:** a champion spawns on a specified hex and idles.
-
-### 4.5 Debug spawn command  
-**[C++]**
-`SpawnChampion <DataAssetName> <q> <r>`. Places a champion directly onto a hex, bypassing both
-the shop and the bench.
-
-**Debug only.** This is the single exception to buy-to-bench, it exists so Phase 5 can be tested
-before a shop exists, and it must never be reachable from normal play. Do not reuse this path for
-the shop's buy flow in Phase 6.
-**Done when:** every champion can be spawned to arbitrary hexes from console.
-
-### 4.6 Team tint hook  
-**[C++ + Editor]**
-**C++:** the team flag and the parameter-setting call.  
-**Editor:** the material parameter or outline shader it drives.
-
-Material parameter or outline shader driven by the `BoardUnitBase` team flag. Player-side only for
-now, but the switch exists — `DESIGN.md` calls for distinguishing sides by tint rather than by
-model, since both sides draw from the same packs.
+**Done when:** attacks play a swing with damage landing at the tuned moment; a dying unit plays its
+death clip and disappears at the end without blocking a hex; console shows no errors from the
+ABP's notifies.
 
 ---
 
-# Phase 5 — Placement
+# Phase 4 — Checkpoint validation
 
-Built and tested against debug spawns. No shop dependency.
-
-### 5.1 Placement validation  
-**[C++]**
-`CanPlaceAt(coord)` is true only when the coord is valid, `bIsPlaceable`, and `Occupant` is null.
-`bIsSpawn` tiles are never placeable.
-
-**Validation lives in `Grid/`, and stays there.** `CLAUDE.md`'s layout puts `PlacementValidator`
-under `Terrain/`; that is a *different* validator and the two are not unified. Unit placement asks
-"is this coord valid, placeable, and free" — a pure grid question with no pathfinding. Terrain
-placement asks all of that **plus** "does this seal the board", which needs A* and arrives with the
-terrain checkpoint. Two validators, one shared grid-level check underneath. Do not build
-`PlacementValidator` now and do not move this into `Terrain/`.
-**Done when:** unit tests cover valid interior, occupied, enemy-zone, spawn, and out-of-bounds.
-
-**The spawn case needs a deliberately invalid fixture.** Real spawn tiles sit on the far edge,
-which is row 0, which is already non-placeable because it is in the enemy zone. A test that flags
-row 0 and asserts rejection passes because of the *zone* check and never reaches the spawn check —
-it would stay green if the spawn guard were deleted entirely. Use the 1.6 setter to set `bIsSpawn`
-on a tile **inside the placeable zone** (row 5, say). No real level would be configured that way,
-which is exactly the point: zone and occupancy both pass, so `bIsSpawn` is the only thing that can
-cause the rejection, and removing the guard breaks the test.
-
-Same principle applies to the other cases — each fixture should leave its own guard as the only
-possible reason for the result.
-
-### 5.2 Placement preview  
-**[C++]**
-During a drag, valid hexes show `ValidPlacement`, invalid ones `InvalidPlacement`. Continuous
-during the drag, not only on release.
-**Done when:** dragging lights the legal hexes and the enemy zone stays dark.
-
-### 5.3 Commit placement  
-**[C++]**
-On valid drop: set the tile's `Occupant`, clear the origin tile, move the actor to the new centre.
-`bIsWalkable` is **not** touched — occupancy is its own field, and the pathfinder prices it.
-**Done when:** grid data and visual position never disagree, verified with the 1.5 dump.
-
-### 5.4 Repositioning and swap  
-**[C++]**
-Drag a placed champion to another legal hex. Dropping on an occupied hex **swaps** the two, as in
-TFT.
-**Done when:** swap works both directions and leaves grid data consistent.
-
-### 5.5 Occupancy debug view  
-**[C++]**
-Debug panel lists every occupied hex and its occupant, accurate mid-drag.
-
----
-
-# Phase 6 — Economy and shop
-
-### 6.1 `EconomyState` (`Economy/`)  
-**[C++]**
-Gold as an integer. `Add`, `Spend`, `CanAfford`, change delegate. Starting gold from the 0.4
-placeholder config. C++ per `CLAUDE.md`'s split.
-
-### 6.2 Champion pool  
-**[C++ + Editor]**
-**C++:** the pool class, draw and return logic, and the row struct.  
-**Editor:** the data table asset and its placeholder rows.
-
-Data table mapping tier → pool size and roll odds, per the 0.4 carve-out. Champions are drawn from
-the pool and returned on sell. Mark the numbers as placeholders like everything else in 0.4.
-**Done when:** a debug command rolls a large sample and the tier distribution matches config.
-
-### 6.3 `ShopSystem` (`Economy/`)  
-**[C++]**
-`ShopSlotCount` slots, read from the 0.4 config — currently 5, not a literal. `Reroll()` draws at
-configured odds and costs `RerollCost` gold. `Buy(slotIndex)` checks gold, asks `Bench` whether it
-has space, deducts, empties the slot, and hands the champion to `Bench` to place in its first free
-slot.
-
-**`ShopSystem` does not own bench state.** It queries and calls `Bench` (task 6.4); the array lives
-there. A shop that owns the bench ends up owning placement, and then board → bench drags have to
-route through the shop, which is the wrong shape.
-
-**Buying never spawns a champion onto a hex.** `ShopSystem` has no knowledge of `HexGrid` and no
-reference to a coordinate. If a purchase can reach the board without a drag, the flow is wrong.
-
-A full bench blocks buying — the buy button disables and the attempt fails cleanly. (The one
-exception, added after the checkpoint closed: a copy that completes a star-up merge — see the
-addendum below.)
-**Done when:** buying without enough gold or with a full bench fails cleanly and leaves state
-untouched.
-
-### 6.4 `Bench` (`Economy/`)  
-**[C++]**
-`BenchSlotCount` slots, read from the 0.4 config — currently 6, not a literal.
-**The only way a champion reaches the board.**
-
-**`Bench` owns the slot array.** It exposes `HasFreeSlot`, `AddChampion`, `RemoveChampion`,
-`GetChampionAt`, and a change delegate. `ShopSystem` and the drag system both call into it; neither
-holds bench state. This is why it is its own class rather than a field on `ShopSystem` — the shop
-is one of two writers, not the owner.
-
-Bench slots are drag sources and drop targets using the same interaction as board hexes from
-Phase 3.4 and Phase 5 — one drag system, two kinds of destination, not two parallel systems.
-Supported directions: bench → board, board → bench, bench → bench.
-
-Bench slots are **not hexes** and are not part of the tile array. Do not widen `HexGrid` to cover
-them.
-
-Board → bench is a real move, not just an undo: `DESIGN.md` calls for pulling wounded units back
-during prep once persistent damage exists.
-
-**Done when:** all three drag directions work, grid occupancy stays correct across every
-transition, and a full bench blocks buying.
-
-### 6.5 Shop and bench UI  
+### 4.1 Full-loop smoke test
 **[Editor]**
-Widget with `ShopSlotCount` cards (portrait, name, cost from `TierCostTable`, trait tags), gold
-display, reroll button with cost, and the bench row rendered beneath the board. Cards disable when
-unaffordable or when the bench is full, with the reason legible. Blueprint, per the split. Function
-over polish.
+Buy, place, `StartWave`. Watch enemies stop at blockers and shooters kill them. See HP persist,
+heal a unit, see each kill's `+N` and confirm nothing is spendable until the wave ends, merge and sell in prep, start the next wave. Confirm no
+errors and that grid data stays consistent: no unit ever on two tiles, no orphaned occupant.
 
-**After 6.4 on purpose** — the bench row renders from `Bench`'s array, so the array has to exist
-first.
+**Done when:** three waves run back to back with no errors.
 
-### 6.6 Sell  
-**[C++ + Editor]**
-**C++:** refund, pool return, tile clear, and the sell entry point.  
-**Editor:** the sell zone widget or input binding.
+### 4.2 Playtest questions, answered in writing
+**[Editor + C++]**
+Record the answers here, as Checkpoint 1's 7.1 recorded crossing time. These are the questions
+`DESIGN.md` §8 says only play can answer:
 
-Drag to a sell zone, or select and press a key. Refunds gold, returns the champion to the pool,
-frees the tile.
+- **Does one cheap blocker trivialize a wave?** And does a full-row wall? Lower `UnitCap` toward 6
+  and see.
+- **Crossing time against `SpawnInterval`:** lump, or stream?
+- **Does the cap change what you buy and place?**
+- **Does persistent damage plus a 1-gold heal feel like an economy, or a chore?**
+- **Do leaks happen at all** against a competent board (informs whether a cost is needed)?
+- **How hard does forfeited kill gold punish a leak on its own?** It is already a punishment. Does
+  the run need a further chosen leak cost at all, or is the spiral already fast enough?
+- **Does the wave ever stall** (enemies clogging the spawn hexes)?
 
-Note for later: `CLAUDE.md` requires that units are **never destroyed and respawned between
-waves**, so attributes persist. Selling (and, later, merging copies into a star-up) is an
-intentional removal and is exempt — but do not build any board-refresh or wave-reset path that
-destroys and recreates champions.
-
-### 6.7 Trait counter UI  
-**[C++ + Editor]**
-**C++:** the tag count across board occupants and a change delegate.  
-**Editor:** the panel widget bound to it.
-
-Panel listing the two trait tags and how many board champions carry each. **Board only — bench
-champions do not count**, as in TFT. **Distinct champions only**, also as in TFT: champion identity
-is its `ChampionData` asset, so two Gruxes are one Bruiser. Implemented as a **tag count across the
-board**, which is the same mechanism thresholds will use later. No thresholds, no effects, no
-unlocks.
-**Done when:** counts update live on place, remove, swap, and sell, and moving a champion to the
-bench decrements its traits.
-
----
-
-# Phase 7 — Checkpoint validation
-
-### 7.1 `HexPathfinder` and debug walker (`Pathfinding/`)  
-**[C++]**
-The distance search, the virtual goal node, the next-step choice, the walker, and crossing-time
-logging. No editor assets: the walker's capsule stand-in is an engine cylinder, and spawn tiles are
-flagged with the `SetSpawnFlag` console command (a level Blueprint for it would be thrown away when
-the enemy checkpoint brings a per-level spawn array).
-
-Hand-rolled search over the tile array, run as a distance query. Grid pathfinding, not NavMesh.
-
-Per `CLAUDE.md`, enemies path to **a single virtual goal node with zero-cost edges from every
-back-row hex**, so the exit is one source for the search rather than eight targets. Dijkstra
-outward from it gives every tile its path distance to the exit. Implement the goal node now — it
-is three lines and it keeps the search shape correct from the start.
-
-The goal is an **exit**, not a crystal: reaching the back row means leaving the board. There is no
-objective actor to build, now or later. The leak counter that eventually hangs off this arrives
-with the enemy checkpoint; do not add it here.
-
-**Cost function.** Per `CLAUDE.md`: a tile with `bIsWalkable == false` is impassable. An occupied
-tile is passable to the search at **one flat, high cost**, identical for every unit — never read
-HP, tier, or team. That cost is a tuning value, `OccupiedTileCost` on `DA_BoardConfig` (placeholder
-100; it must exceed the longest possible detour so a gap is always preferred). Terrain does not
-exist yet, so this checkpoint only exercises the occupied-tile half.
-
-**One hex at a time, no stored path.** A debug capsule spawns on a far-edge hex. Each time it
-arrives on a hex it asks the pathfinder for its next one: the neighbour with the lowest distance to
-the goal, ties broken at random. It moves centre-to-centre to that hex at a configurable speed —
-in **hexes per second**, not world units, so a `HexRadius` change never retunes it — and despawns
-at the goal. It never enters an occupied hex — if the chosen hex is occupied it holds and
-logs. **No combat, no AI, no `EnemyBase` class, no targeting, no path cache.** The capsule is not
-an `ABoardUnitBase` and takes no occupancy.
-
-Log the crossing time, measured on an **empty board**, spawn to despawn.
-
-**Also verify, with `SpawnChampion` (4.5):** a single champion in the walker's lane makes it route
-around; a full row of champions makes it walk up to the wall and hold there without entering an
-occupied hex. This is the flat-cost rule doing its job before any aggro exists.
-
-**Done when:** the walker crosses the empty board and the crossing time is written down, and the
-two occupied-hex checks above behave as described. That number is what the next checkpoint's
-tuning starts from.
-
-**Result (2026-09-20).** The empty-board crossing is 7 hexes. At **2 hexes/s**, the speed picked by
-eye after watching the walker at several speeds, that is **3.5 s** spawn to despawn (7 ÷ 2). It is a
-starting point, not a tuned value: the next checkpoint's per-enemy speed lives on `EnemyData`, and
-this is what to seed it from. Both occupied-hex checks behaved as described in PIE — a lone
-champion is routed around, and a full row makes the walker hold at the wall — and
-`Terrabound.Pathfinding.HexPathfinder.*` covers the same rules headlessly.
-
-### 7.2 Full-loop smoke test  
-**[Editor]**
-Start PIE with starting gold. Reroll. Buy 3–4 champions and confirm each lands **on the bench, not
-the board**. Drag them onto hexes. Reposition, swap, pull one back to the bench. Fill the bench and
-confirm buying is blocked. Sell from both bench and board. Watch trait counts throughout.
-**Done when:** no errors and grid data stays consistent.
+**Done when:** each has a written answer, and the next plan can start from them.
 
 ---
 
 ## Definition of done
 
-- [x] 7×8 pointy-top board renders with correct odd-r staggering
-- [x] Grid is a flat data array; nothing queries actors for tile state
-- [x] Coordinate round-trip and neighbour-symmetry tests pass on both row parities
-- [x] `bIsWalkable` and `Occupant` are independent; placement never touches walkability
-- [x] `FHexTile` compiles on a forward declaration; no stub `ABoardUnitBase`, no `AActor` placeholder
-- [x] Spawn-rejection test uses a placeable-zone fixture, so it fails if the guard is removed
-- [x] Player zone (35 hexes) derived from config, not hardcoded
-- [x] Camera frames all 56 hexes legibly at default zoom
-- [x] Mouse hover resolves to the correct hex anywhere on the board, with no traces
-- [x] No line traces for tile state anywhere in the input path. The one trace is unit pickup
-      (`BoardPlayerController::OnSelectPressed`, against the unit's `HitBox`), which reads which unit
-      was clicked and never tile state; hover and drag-follow use the ground-plane intersection
-- [x] Click-and-drag placement with valid/invalid preview
-- [x] 3–4 Paragon champions spawn, scale correctly, and idle on hexes
-- [x] Traits are GameplayTags; trait counts are tag counts
-- [x] Shop rolls, rerolls, buys, and sells against `EconomyState`
-- [x] Buying lands a champion on the bench; no code path spawns one onto a hex
-- [x] A full bench blocks buying, legibly
-- [x] Champions can be placed, repositioned, swapped, benched, and sold
-- [x] Bench works in all three drag directions; bench champions excluded from trait counts
-- [x] `Bench` owns the slot array; `ShopSystem` holds no bench state
-- [x] All economy numbers live in `EconomyConfig`, marked placeholder, including shop slots, bench
-      slots, and the tier cost table. The exception is roll odds and pool sizes, which live in
-      `DT_ChampionTierOdds` and `DT_ChampionPool` so retuning a tier's odds is one row (6.2)
-- [x] Champion cost derives from tier; no `Cost` field on `ChampionData`
-- [x] `HexRadius` was set against a real Paragon character before the board was built (110, in
-      `DA_BoardConfig`)
-- [x] Board crossing time measured and recorded
-- [x] No GAS, no AttributeSet, no AbilitySystemComponent anywhere
-
----
-
-## Addendum — Star-up (added after Checkpoint 1 closed)
-
-Three copies of the same champion at the same star level merge into one a level higher (TFT's
-star-up). Built at the user's direction between the checkpoint's close and the next plan; design
-in `DESIGN.md` "Star levels".
-
-**[C++]** `UChampionMerger` (`Economy/`, a world subsystem) owns the merge. It touches both `Bench`
-and `HexGrid`, which is why it isn't in `ShopSystem`. The rule itself is a pure function,
-`SelectMergeGroup`, tested headlessly (`Terrabound.Economy.ChampionMerge.*`); the world-facing
-part (`TryMerge`, `WouldCompleteMerge`) is not, and is covered by the playtest below.
-
-- `AChampionBase::StarLevel` — runtime state with a getter/setter, not `EditAnywhere`. The setter
-  scales the **mesh** (per `UTerraboundSettings::StarMeshScaleMultipliers`), never the actor, so
-  the HitBox stays uniform.
-- `EconomyConfig::MaxStarLevel` (3) and `CopiesPerStarUp` (3), placeholders like the rest.
-- `ShopSystem::Buy` hands each new copy to the merger; a copy that completes a merge is consumed
-  and never benched. `CanBuy` allows a full bench for exactly that case, and refuses while a unit
-  is being carried (`BoardPlayerController::IsCarryingUnit`).
-- `ShopSystem::Sell` refunds tier cost × `CopiesPerStarUp^(star-1)` and returns that many copies
-  to the pool.
-- `DebugBenchAdd` goes through the merger, so three calls with the same champion merge.
-
-Not built: any stat bonus per star, and healing on star-up — both need GAS.
-
-**Done when:**
-- [x] `SelectMergeGroup` tests pass and were mutation-checked (star-level match and survivor
-      priority each fail a test when removed)
-- [x] Three `DebugBenchAdd <Champion>` merge into one scaled-up copy
-- [x] Buying three of the same champion from the shop merges
-- [x] Buying the completing copy with a full bench works; buying a non-completing copy with a
-      full bench still fails
-- [x] A merge with copies on both bench and board keeps the board copy, in place
-- [x] Three 2-stars merge into a 3-star, and a 3-star never merges further
-- [x] Selling a 2-star refunds 3× its tier cost and restores 3 copies to the pool
-- [x] Buying is refused while a unit is carried; cards re-enable on drop
-- [x] `DT_ChampionPool` `PoolSize` is at least `CopiesPerStarUp^(MaxStarLevel-1)` (9) per champion,
-      or a 3-star is unreachable
+- [ ] Enemies spawn on configured hexes, walk one hex at a time with no stored path, and exit
+- [ ] `TryOccupy` is atomic; no test or PIE run ever puts two units on one tile
+- [ ] A wave resolves when the roster is spawned and no enemy is alive
+- [ ] Leaks are counted per wave and in total, with no cost and nothing reading the counter
+- [ ] Shop, bench, sell, heal and drag are prep-only; `StartWave` refuses while carrying
+- [ ] Every board unit has an ability system component; attributes come from data assets
+- [ ] Targeting is not routed through GAS; `TargetingComponent` selects and passes data
+- [ ] Damage, death, kill gold and pool return all work through one path
+- [ ] Kill gold is the only income: granted on death, `+N` shown at the gold counter, unspendable
+      until the wave ends; no flat per-wave income exists
+- [ ] HP persists across waves; no path destroys and recreates a unit
+- [ ] Star-up scales health and damage by configured factors; attack speed and range stay flat
+- [ ] Enemy acquisition needs both conditions, filtered before path-length ranking
+- [ ] Lock breaks through one mechanism (dies, untargetable, leaves range, loses attack hex)
+- [ ] Contested hexes resolve by re-check; the loser re-scans the same tick
+- [ ] Unit cap enforced for bench-to-empty only; preview shows invalid at the cap
+- [ ] Paid heal works and refuses in Combat, at full HP, or without gold
+- [ ] Enemies play a walk loop, and attacks and deaths play their clips, with no new or edited
+      Animation Blueprint and the Paragon folders untouched
+- [ ] `ADebugPathWalker` and `SpawnPathWalker` removed
+- [ ] Crossing time and `SpawnInterval` verdict written down
+- [ ] Playtest questions in 4.2 answered in writing
+- [ ] No mana, armor, cast ability, terrain, or chosen leak cost anywhere
 
 ---
 
 ## Out of scope — do not build, do not scaffold
 
-Enemies, `EnemyBase`, `EnemyAssassin`. Assassin leaps, mana. Enemy range values. Combat,
-`CombatResolver`. Wave rosters and spawn pacing (`SpawnInterval`). The leak counter. `TargetingComponent`,
-`TargetableInterface`, aggro, target locking, `State.Untargetable`. GAS in any form — AttributeSet,
-AbilitySystemComponent, GameplayEffects, abilities. Waves, `WaveManager`, `WaveDefinition`,
-scouting. Terrain, trees, `TerrainPieceBase`, `PlacementValidator`, seal prevention. Trait thresholds or effects. Path
-caching and dirty-flag invalidation (7.1 recomputes on every hex arrival; that is fine at 56 tiles).
-The unit cap. Any objective actor, HP crystal, or nexus — the design has none. Persistent damage, healing.
-Checkmate, score. Augments, items, bosses,
-mid-combat repositioning, enemy-side terrain, depth-based stat bonuses, stat degradation, traits
-beyond the two in MVP scope. Save/load. Audio. Textures, VFX. LODs and performance work.
+Assassins, the leap, mana, armor, and any cast ability (the next checkpoint's first ability).
+Terrain, trees, `TerrainPieceBase`, `PlacementValidator`, seal prevention. Trait thresholds and
+effects. The damaged-sell rule and any change to sell value. A chosen leak cost (forfeited kill gold, D3, is already one and needs no code). The checkmate lose
+condition (a run with no units will simply stall). Scoutable wave display. The endless scaling
+formula for waves. HP bars, damage numbers, world-space popups and other UI (the HUD `+N` gold popup, 2.9, is the one exception); a Ready button; a real heal UI. Interest and streaks. Ability animations (with
+mana), animation notifies, and any new or edited Animation Blueprint, including driving the stock
+ABPs' `Speed` and `IsAccelerating` from C++. Projectiles, windup, line-of-fire
+blocking. A ranged enemy archetype, `TargetableInterface`, `CombatResolver`. Augments, items,
+bosses, mid-combat repositioning, enemy-side terrain, depth bonuses, stat degradation. Save/load,
+audio, textures, VFX, LODs, performance work.
 
 Several of these are one small step from something in this plan. That is why the list is explicit.
 
@@ -806,17 +557,28 @@ Several of these are one small step from something in this plan. That is why the
 
 ## Known issues to expect, not solve
 
-- **Paragon scale and animation timing.** Tuned for a MOBA camera. Attack windups and root motion
-  will need adjusting to read at autobattler zoom. Not a Checkpoint 1 problem.
-- **Performance with a full board.** High-poly heroes built for a handful on screen; 35 champions
-  plus a wave will want LODs and possibly lower-fidelity enemy variants. Do not pre-optimise.
-- **Hex radius vs character scale.** These fight each other. Task **0.6** settles it before the
-  board is built: pick a radius that fits the characters and leave it alone. Range is stored in
-  hexes precisely so this can change later without rebalancing anything.
+- **The stock ABPs are pawn-shaped.** They idle and play the spawn animation fine but never see
+  velocity, which is why walking is played directly (1.8). They also start a 5 s `LevelStart`
+  montage on every spawn, including enemies; the 1.8 spike checks the walk overrides it.
+- **Attack timing is approximate.** There is no impact notify, so the hit delay is tuned by eye
+  per hero (D16). Paragon animation timing is tuned for a MOBA camera and may still want
+  adjusting at this zoom.
+- **Do not "Save All" after an ABP inspection.** Reading ABP graphs through the MCP marked all four
+  ABPs dirty in memory; nothing was written.
+- **Phase 1 stalls at a full wall** until Phase 3 lands (1.7).
+- **Enemies shoot through trees that don't exist yet.** Range is hex distance by design.
+- **A blocker wall may be too strong.** That is a 4.2 question, not a bug.
+- **Sell-and-rebuy launders damage** (D10).
+- **A leaking enemy drops no gold.** That is a real punishment, already in place and needing no
+  code, and any leak cost chosen later stacks on top of it. Size that cost knowing leaks already
+  hurt. Nothing else reads the counter.
+- **Phase 1 waves award no gold** (kills arrive in 2.2). Fine: the player spends part of
+  `StartingGold` in the first prep and keeps the rest.
 
 ---
 
 ## After this checkpoint
 
-Stop. Do not continue into enemies. The plan is rewritten from what the board actually feels like
-to play.
+Stop. Do not continue into assassins or terrain. The plan is rewritten from what the fights
+actually feel like. Likely next: the first cast ability with mana (assassins), and one tree
+(Step 4).
