@@ -774,15 +774,15 @@ Not built: any stat bonus per star, and healing on star-up — both need GAS.
 **Done when:**
 - [x] `SelectMergeGroup` tests pass and were mutation-checked (star-level match and survivor
       priority each fail a test when removed)
-- [ ] Three `DebugBenchAdd <Champion>` merge into one scaled-up copy
-- [ ] Buying three of the same champion from the shop merges
-- [ ] Buying the completing copy with a full bench works; buying a non-completing copy with a
+- [x] Three `DebugBenchAdd <Champion>` merge into one scaled-up copy
+- [x] Buying three of the same champion from the shop merges
+- [x] Buying the completing copy with a full bench works; buying a non-completing copy with a
       full bench still fails
-- [ ] A merge with copies on both bench and board keeps the board copy, in place
-- [ ] Three 2-stars merge into a 3-star, and a 3-star never merges further
-- [ ] Selling a 2-star refunds 3× its tier cost and restores 3 copies to the pool
-- [ ] Buying is refused while a unit is carried; cards re-enable on drop
-- [ ] `DT_ChampionPool` `PoolSize` is at least `CopiesPerStarUp^(MaxStarLevel-1)` (9) per champion,
+- [x] A merge with copies on both bench and board keeps the board copy, in place
+- [x] Three 2-stars merge into a 3-star, and a 3-star never merges further
+- [x] Selling a 2-star refunds 3× its tier cost and restores 3 copies to the pool
+- [x] Buying is refused while a unit is carried; cards re-enable on drop
+- [x] `DT_ChampionPool` `PoolSize` is at least `CopiesPerStarUp^(MaxStarLevel-1)` (9) per champion,
       or a 3-star is unreachable
 
 ---
