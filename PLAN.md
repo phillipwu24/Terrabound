@@ -237,13 +237,14 @@ as before.
 
 ### 1.6 Enemy assets and first waves
 **[Editor]**
-Create in `Content/Terrabound/Data/Enemies/`: `DA_Enemy_A` (`RangeInHexes` 1) and `DA_Enemy_B`
-(`RangeInHexes` 2), from `UEnemyData`, reusing already-imported Paragon meshes (the team tint tells
-the sides apart). Enemies reuse the champion packs TFT-style, but pick *different meshes* from a pack
-than its champion uses. **`DA_Enemy_Grux` already exists** (range 1, made for 1.2's PIE check; it stands in for
-`DA_Enemy_A`, so keep it or rename it, but the `SpawnEnemy` command takes the asset name); `DA_Enemy_B`
-and `DT_Waves` remain. Placeholder stats, marked unresolved. Create `DT_Waves` in `Data/Waves/`
-(row struct `FWaveRow`) with waves 1–3, small rosters mixing both enemies, and point
+Create in `Content/Terrabound/Data/Enemies/` one `UEnemyData` per enemy, named after the Paragon pack
+it uses with `Enemy` in place of `Champion`: `DA_Champion_Grux` is mirrored by `DA_Enemy_Grux`. There
+are no `A`/`B` names. Enemies reuse the champion packs TFT-style (the team tint tells the sides
+apart), but each picks a *different mesh* from the pack than its champion uses. Make enough enemies
+that at least one has `RangeInHexes` 1 and one has 2 (your choice of which packs), so Phase 3 can test
+both. **`DA_Enemy_Grux` already exists** (range 1, made for 1.2's PIE check); the rest and `DT_Waves`
+remain. Placeholder stats, marked unresolved. Create `DT_Waves` in `Data/Waves/` (row struct
+`FWaveRow`) with waves 1–3, small rosters mixing range-1 and range-2 enemies, and point
 `UTerraboundSettings` at it.
 
 **Done when:** `StartWave` in PIE spawns wave 1's roster from data.
