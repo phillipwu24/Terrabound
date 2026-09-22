@@ -149,11 +149,17 @@ No combat, no GAS. An enemy spawns, crosses, exits, and is counted.
 **[C++]**
 `UHexGrid::TryOccupy(Coord, Unit)`: succeeds only if the tile exists and has no other valid
 occupant; sets it and broadcasts `OnOccupancyChanged`. Placement keeps using `SetOccupant`, which
-already checks legality itself. An enemy calls `TryOccupy` on the next hex when it begins a step
-and `ClearOccupant` on the hex it leaves, at the same moment.
+overwrites unconditionally (its callers check `CanPlaceAt` first). An enemy calls `TryOccupy` on
+the next hex when it begins a step and `ClearOccupant` on the hex it leaves, at the same moment.
 
 **Done when:** a headless test shows a second claimant on the same tile fails, and the tile never
 holds two units however the claims interleave.
+
+**Done (2026-09-21, `5d4e2c9`).** Two headless tests (`TryOccupy.Contested`, `.EdgeCases`),
+mutation-checked. It checks occupancy only: not walkable, spawn or placeable. A destroyed
+occupant counts as empty; re-claiming your own tile succeeds without a broadcast. The failed-claim
+no-broadcast rule is untested (`OnOccupancyChanged` is a dynamic delegate; a test would need a
+`UCLASS` listener).
 
 ### 1.2 `EnemyData` and `EnemyBase` (`Data/`, `Units/`)
 **[C++]**
@@ -175,6 +181,17 @@ release the tile, fire `OnEnemyExited`, destroy.
 
 **Done when:** an enemy spawned by console crosses the empty board, exits, and logs its crossing
 time; a lone champion in its lane is routed around; it never enters an occupied hex.
+
+**Done (2026-09-21, `e459675`; PIE-verified by the user with Grux as `DA_Enemy_Grux`).** As built:
+`Data/EnemyData.h`, `Units/EnemyBase.*`, `SpawnEnemy <DataAssetName> <q> <r>` (spawn-flagged,
+unoccupied hex), four headless tests (`Terrabound.Units.EnemyBase.*`, mutation-checked). Empty-board
+crossing measured at **3.50 s**. Calls made: `CurrentCoord` is the *claimed* hex from the moment a
+step begins (protected `SetCurrentCoord` on `BoardUnitBase`); `OnEnemyExited` is a native multicast
+delegate carrying the enemy (a dynamic one can't be bound by a test); the tile is released in
+`Destroyed()`, not `EndPlay`; facing snaps to the step direction with no turn interpolation; the
+distance field is recomputed on every decision, including every tick of a hold. `AEnemyBase` exposes
+`AdvanceMovement(dt)` publicly so tests can drive it. `RangeInHexes` is validated by an editor clamp
+plus a runtime error log, not stored on the enemy, so nothing clamps at runtime.
 
 ### 1.3 Spawn hex config (`Waves/`)
 **[C++ + Editor]**
@@ -222,7 +239,10 @@ as before.
 **[Editor]**
 Create in `Content/Terrabound/Data/Enemies/`: `DA_Enemy_A` (`RangeInHexes` 1) and `DA_Enemy_B`
 (`RangeInHexes` 2), from `UEnemyData`, reusing already-imported Paragon meshes (the team tint tells
-the sides apart). Placeholder stats, marked unresolved. Create `DT_Waves` in `Data/Waves/`
+the sides apart). Enemies reuse the champion packs TFT-style, but pick *different meshes* from a pack
+than its champion uses. **`DA_Enemy_Grux` already exists** (range 1, made for 1.2's PIE check; it stands in for
+`DA_Enemy_A`, so keep it or rename it, but the `SpawnEnemy` command takes the asset name); `DA_Enemy_B`
+and `DT_Waves` remain. Placeholder stats, marked unresolved. Create `DT_Waves` in `Data/Waves/`
 (row struct `FWaveRow`) with waves 1–3, small rosters mixing both enemies, and point
 `UTerraboundSettings` at it.
 

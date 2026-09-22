@@ -24,7 +24,7 @@ ABoardUnitBase::ABoardUnitBase()
 	// mesh's local +Y, not Unreal's default +X. Without this, an actor rotation meant to face a
 	// world direction (e.g. ChampionBase's "face the enemy side") visually faces 90 degrees off
 	// from what the rotation math intends. Applied here rather than per-champion since every
-	// board unit - champions now, enemies later - is built from these same packs.
+	// board unit - champions and enemies alike - is built from these same packs.
 	Mesh->SetRelativeRotation(FRotator(0.f, -90.f, 0.f));
 
 	HitBox = CreateDefaultSubobject<UCapsuleComponent>(TEXT("HitBox"));

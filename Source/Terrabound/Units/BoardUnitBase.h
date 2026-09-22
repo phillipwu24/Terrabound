@@ -22,7 +22,7 @@ enum class EBoardUnitTeam : uint8
 };
 
 /**
- * Shared base for champions and, later, enemies (PLAN.md 4.2). Holds board coordinate and team
+ * Shared base for champions and enemies (PLAN.md 4.2). Holds board coordinate and team
  * identity and knows how to snap itself to a hex's world position. Deliberately thin: nothing
  * champion-specific lives here - stats, cost, and abilities are ChampionData/ChampionBase's job
  * (task 4.3/4.4).
@@ -32,7 +32,8 @@ enum class EBoardUnitTeam : uint8
  * world position is derived from CurrentCoord, not simulated.
  *
  * SnapToHex does not touch HexGrid::Occupant. Whatever moves a unit (the debug spawn command,
- * task 4.5; the drag/placement system, Phase 5) calls HexGrid::SetOccupant/ClearOccupant itself -
+ * task 4.5; the drag/placement system, Phase 5; an enemy walking, via TryOccupy) calls
+ * HexGrid::SetOccupant/TryOccupy/ClearOccupant itself -
  * a hex-to-hex swap touches two tiles at once, and that orchestration belongs with the code that
  * already knows both coordinates, not smuggled into a per-unit method.
  */

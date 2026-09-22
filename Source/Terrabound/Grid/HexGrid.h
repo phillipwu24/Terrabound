@@ -34,7 +34,11 @@ public:
 	 */
 	const FHexTile* GetTile(const FHexCoord& Coord) const;
 
-	/** Sets Coord's occupant. Returns false for an invalid coord. */
+	/**
+	 * Sets Coord's occupant, overwriting whoever is there - placement, swap and debug spawns check
+	 * CanPlaceAt/CanPlaceOrSwapAt first. A unit that walks into a hex uses TryOccupy instead.
+	 * Returns false for an invalid coord.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Hex Grid")
 	bool SetOccupant(const FHexCoord& Coord, ABoardUnitBase* Unit);
 

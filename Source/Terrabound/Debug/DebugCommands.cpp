@@ -27,8 +27,8 @@
 
 namespace
 {
-	// PLACEHOLDER, debug-only default, picked by eye in 7.1. A real per-enemy speed lands on
-	// EnemyData in the enemy checkpoint; this and the crossing time in PLAN.md are its starting point.
+	// PLACEHOLDER, debug-only default, picked by eye in 7.1. UEnemyData::MoveSpeedHexesPerSecond has
+	// since taken over the real value (seeded from this); goes away with the walker in PLAN.md 1.7.
 	constexpr float DefaultWalkerHexesPerSecond = 2.f;
 
 	void DebugPing()
@@ -288,7 +288,7 @@ namespace
 			}
 
 			// Prefer the champion's authored display name; fall back to the actor's own name for
-			// any other ABoardUnitBase (e.g. a future EnemyBase, which has no ChampionData).
+			// any other ABoardUnitBase (e.g. an AEnemyBase, which has no ChampionData).
 			FString Label = Occupant->GetName();
 			if (const AChampionBase* Champion = Cast<AChampionBase>(Occupant))
 			{

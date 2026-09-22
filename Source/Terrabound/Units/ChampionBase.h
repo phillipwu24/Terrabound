@@ -10,7 +10,7 @@ class UChampionData;
 
 /**
  * Player-side board unit (PLAN.md 4.4). Derives from BoardUnitBase - nothing champion-specific
- * lives on the base class, since it's shared with the future EnemyBase.
+ * lives on the base class, since it's shared with EnemyBase.
  *
  * Idle animation only for now: no combat, no targeting, no attack animation - that's later
  * checkpoints. Always Player team (set in the constructor) and always faces the enemy side
