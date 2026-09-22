@@ -51,8 +51,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Board Unit")
 	void SnapToHex(const FHexCoord& Coord);
 
-	/** Live runtime state, not EditAnywhere - see CLAUDE.md's Blueprint exposure rule. Set only
-	 * through SnapToHex. */
+	/** Live runtime state, not EditAnywhere - see CLAUDE.md's Blueprint exposure rule. Set through
+	 * SnapToHex, or by a walking unit's own claim (SetCurrentCoord). */
 	UFUNCTION(BlueprintPure, Category = "Board Unit")
 	FHexCoord GetCurrentCoord() const { return CurrentCoord; }
 
@@ -70,6 +70,14 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+
+	/**
+	 * Sets CurrentCoord without moving the actor, for a unit that walks between hexes: it claims the
+	 * destination in the grid when a step begins, so the coord must follow the claim while the actor
+	 * is still visually mid-step. Everything else moves through SnapToHex.
+	 */
+	void SetCurrentCoord(const FHexCoord& Coord) { CurrentCoord = Coord; }
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Board Unit")
 	TObjectPtr<USkeletalMeshComponent> Mesh;
 

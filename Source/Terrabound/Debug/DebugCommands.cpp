@@ -14,7 +14,9 @@
 #include "../Grid/HexTile.h"
 #include "../Grid/HexGridVisualizer.h"
 #include "../Units/ChampionBase.h"
+#include "../Units/EnemyBase.h"
 #include "../Data/ChampionData.h"
+#include "../Data/EnemyData.h"
 #include "../Economy/EconomyState.h"
 #include "../Economy/ChampionPool.h"
 #include "../Economy/Bench.h"
@@ -202,6 +204,68 @@ namespace
 
 		Walker->StartWalking(Coord, HexesPerSecond);
 		UE_LOG(LogTemp, Display, TEXT("SpawnPathWalker: walking from %s at %.2f hexes/s."), *Coord.ToString(), HexesPerSecond);
+	}
+
+	void DebugSpawnEnemy(const TArray<FString>& Args, UWorld* World)
+	{
+		if (!World)
+		{
+			UE_LOG(LogTemp, Error, TEXT("SpawnEnemy: no world."));
+			return;
+		}
+
+		int32 Q = 0, R = 0;
+		if (Args.Num() < 3 || !LexTryParseString(Q, *Args[1]) || !LexTryParseString(R, *Args[2]))
+		{
+			UE_LOG(LogTemp, Error, TEXT("SpawnEnemy: usage: SpawnEnemy <DataAssetName> <q> <r>"));
+			return;
+		}
+
+		UHexGrid* Grid = World->GetSubsystem<UHexGrid>();
+		if (!Grid)
+		{
+			UE_LOG(LogTemp, Error, TEXT("SpawnEnemy: no HexGrid subsystem for this world."));
+			return;
+		}
+
+		const FHexCoord Coord(Q, R);
+		const FHexTile* Tile = Grid->GetTile(Coord);
+		if (!Tile || !Tile->bIsSpawn)
+		{
+			UE_LOG(LogTemp, Error, TEXT("SpawnEnemy: %s is not a spawn-flagged tile (see SetSpawnFlag)."), *Coord.ToString());
+			return;
+		}
+		if (Tile->Occupant.IsValid())
+		{
+			UE_LOG(LogTemp, Error, TEXT("SpawnEnemy: %s is occupied."), *Coord.ToString());
+			return;
+		}
+
+		const FString& AssetName = Args[0];
+		const FString AssetPath = FString::Printf(TEXT("/Game/Terrabound/Data/Enemies/%s.%s"), *AssetName, *AssetName);
+		UEnemyData* Data = LoadObject<UEnemyData>(nullptr, *AssetPath);
+		if (!Data)
+		{
+			UE_LOG(LogTemp, Error, TEXT("SpawnEnemy: couldn't load EnemyData '%s' at %s."), *AssetName, *AssetPath);
+			return;
+		}
+
+		AEnemyBase* Enemy = World->SpawnActor<AEnemyBase>();
+		if (!Enemy)
+		{
+			UE_LOG(LogTemp, Error, TEXT("SpawnEnemy: failed to spawn AEnemyBase."));
+			return;
+		}
+
+		Enemy->InitializeFromEnemyData(Data);
+		if (!Enemy->EnterBoard(Coord))
+		{
+			Enemy->Destroy();
+			UE_LOG(LogTemp, Error, TEXT("SpawnEnemy: '%s' could not enter the board at %s."), *AssetName, *Coord.ToString());
+			return;
+		}
+
+		UE_LOG(LogTemp, Display, TEXT("SpawnEnemy: spawned '%s' at %s."), *AssetName, *Coord.ToString());
 	}
 
 	void DebugOccupancy(const TArray<FString>& Args, UWorld* World)
@@ -578,6 +642,12 @@ static FAutoConsoleCommandWithWorldAndArgs SpawnPathWalkerCommand(
 	TEXT("SpawnPathWalker"),
 	TEXT("SpawnPathWalker <q> <r> [hexesPerSecond] - debug-only: spawns a pathfinding test walker on a spawn-flagged hex; it walks to the back row and logs its crossing time."),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugSpawnPathWalker)
+);
+
+static FAutoConsoleCommandWithWorldAndArgs SpawnEnemyCommand(
+	TEXT("SpawnEnemy"),
+	TEXT("SpawnEnemy <DataAssetName> <q> <r> - debug-only: spawns an enemy on a spawn-flagged hex; it walks to the back row, exits, and logs its crossing time."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugSpawnEnemy)
 );
 
 static FAutoConsoleCommandWithWorldAndArgs DebugOccupancyCommand(
