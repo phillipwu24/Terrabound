@@ -22,18 +22,39 @@ invariants and working style. `PLAN.md` is the current checkpoint's task
 breakdown. This file is the source of truth for design intent; where a decision
 here conflicts with either of those on *what the game is*, this file wins.
 
+**Revision, 2026-11-17.** Champions are now stationary. Play is structured as
+rounds of waves with a Start button. Units physically stop enemies: route
+planning ignores units, enemies walk into a champion on their route and fight it,
+and enemies cannot pass each other. Damage lasts for a round, living champions
+heal to full between rounds, and death is permanent. Waves trickle in on one
+randomized wave timer with wave-progress spawn windows. Champion targeting is
+defined. Sections touched: 1, 2 (Blocking model, Seal prevention), 3 (Rounds and
+waves, Spawn pacing, Champion combat, Enemy aggro, Damage/healing/death,
+Repositioning, Danger model), 4, 5, 6, 7.
+
 ---
 
 ## 1. Pitch
 
 A single-player roguelike that fuses TFT-style autobattler mechanics with tower
 defense. The player buys units from a shop, places them on a hex board, and
-watches them defend against waves of enemies that spawn on the far edge and push
-toward the player's side.
+watches them defend against enemies that spawn on the far edge over the course
+of each wave and push toward the player's side.
 
-Unlike TFT, there is no opposing player board. Unlike tower defense, the "towers"
-are champions with traits, synergies, and stat scaling, and the player manages an
-economy between waves.
+Unlike TFT, there is no opposing player board, and enemies arrive over time
+rather than standing in formation at the start. Unlike tower defense, the
+"towers" are champions with traits, synergies, and stat scaling, and the player
+manages an economy between rounds.
+
+**Champions are stationary.** Once a round starts, nothing the player owns
+moves. Ranged champions shoot anything in range; melee champions hit whatever is
+adjacent. Position is decided in prep and lived with for the whole round. This is
+deliberate: when your units cannot move, the only thing that changes where a
+fight happens is where the enemies walk — and that is what terrain controls.
+
+**Fewer, stronger, more varied enemies — not hordes.** A wave is a handful of
+distinct enemies (say, four melee and three ranged) arriving over time. Closer to
+a TFT opponent's board delivered in pieces than to a PvZ horde.
 
 **Core hook: traits reshape the battlefield.** Trait synergies don't just buff
 stats — they let the player physically alter the board, spawning terrain and
@@ -54,7 +75,9 @@ Run structure is endless with a soft cap. Play until you lose. Chase a high scor
   lookup depends on it.
 - Pointy-top means there is no straight-ahead neighbor. Enemies advancing toward
   the exit have two diagonal forward moves, so all movement zigzags. Matches
-  TFT visually and gives terrain more surface to work with.
+  TFT visually and gives terrain more surface to work with. Flat-top (straight
+  columns toward the exit) was considered and declined on 2026-11-17: it gives
+  more lane-like paths but makes front lines and the spawn/exit edges jagged.
 - **Axial coordinates `(q, r)`** for storage, cube for distance. Offset
   coordinates turn neighbor math into parity special-cases.
 - **Range is measured in hexes**, converted at query time, so changing hex size
@@ -72,7 +95,7 @@ reduced income, a damaged unit, a score hit — is the part that is unresolved
 just subscribes to it.
 
 **Until then, leaking is a relief valve rather than a pressure.** An enemy that
-walks past your line and exits stops attacking your units and disappears, so
+gets past your line and exits stops attacking your units and disappears, so
 excess pressure drains out the back for free. That caps how much a wave can hurt
 you no matter how large it is, which is exactly the property a leak cost has to
 remove. Worth knowing while reading early playtest numbers: waves will feel
@@ -88,7 +111,7 @@ Implement as a single virtual goal node with zero-cost edges from every back-row
 hex, so the exit is one source for the distance search rather than eight targets.
 All 56 hexes stay playable.
 
-**Instrument it from the start.** Count leaks per wave and cumulatively, and log
+**Instrument it from the start.** Count leaks per round and cumulatively, and log
 which enemy type leaked. Those numbers are what tell you whether leak damage is
 even the right difficulty lever, and they can't be guessed from a document.
 
@@ -102,9 +125,10 @@ even the right difficulty lever, and they can't be guessed from a document.
 - Do **not** hardcode the zone depth. It is the first dial to turn if the board
   feels cramped or permissive.
 - **A cap on units placed on the board is planned; the value, and how it is
-  calculated, are undecided.** It is one of the two levers (with slow, sparse
-  spawning) that keep battles small-scale — see "Blocking model". A row is 7 wide,
-  so a cap of 6 or less makes a full unit-only wall impossible. Bench champions do
+  calculated, are undecided.** It is one of the two levers (with small, trickled
+  waves) that keep battles small-scale — see "Blocking model". A row is 7 wide,
+  so a cap of 6 or less makes a full unit-only wall impossible, which matters
+  because a champion holds everything queued behind the enemy fighting it. Bench champions do
   not count toward it. Swaps never change the board count, so they are always
   allowed; only bench→empty hex is subject to the cap, and the drag preview shows
   hexes invalid once the board is full.
@@ -117,44 +141,35 @@ The entire far edge is spawnable in principle, but which hexes are live is a
 Store as a per-level array of enabled spawn hexes, so a level can specify "left
 three only" or "both flanks, no center." Leaves room for per-wave control later.
 
+Within a wave, *which* enabled spawn hex a given enemy uses is not authored — it
+spawns from a random free one. See "Spawn pacing".
+
 Spawn hexes are never placeable. Keep per-tile flags independent: `is_spawn`,
 `is_placeable`, `is_walkable`, plus occupant and terrain references.
 
 ### Blocking model
 
-Two hooks, priced differently:
+Terrain and units both stop movement, but in different ways, and keeping them
+different is what keeps terrain meaningful:
 
-| | Effect on pathing | Role |
-|---|---|---|
-| **Terrain** | Impassable | Shapes the route |
-| **Units** (champions and enemies alike) | Passable to the search at one flat, high cost | Deals the damage; occupies its hex |
+| | Enemies plan routes around it? | Can anything move through it? | Role |
+|---|---|---|---|
+| **Terrain** | Yes — impassable in the search | No | **Redirects** — decides where enemies go |
+| **Units** (champions and enemies alike) | No — invisible to route planning | No — must be killed or waited out | **Stops** — decides where enemies are held |
 
-The cost is a routing preference, not a wall. Enemies flow through any gap in
-preference to a unit's hex; where a wall leaves no gap, the search routes through
-it. The enemy walks up, cannot enter (one unit per hex), and aggro makes it fight
-the blocker. "Break the wall or kill a unit" falls out of rules already in place,
-and a sealed board needs no "no route exists" special case.
+**Terrain redirects.** Enemies treat it as a wall and route around it.
 
-**The cost is flat.** Every occupied hex costs the same — it never reads HP, tier,
-or side — so routing never funnels the wave into whichever part of the wall is
-cheapest to hit. Which unit an enemy fights is decided by aggro (nearest by path
-length, within range), not by routing. One consequence, accepted: depth counts, so
-a wall one unit thick in one place and two thick in another draws the approach
-toward the thin spot until a champion comes into range; aggro takes over at
-range 1–2.
+**Units stop.** Enemies do not plan routes around champions. They walk their
+route, and when a champion is in the way they stop and fight through it. If
+enemies routed around units the way they route around trees, a line of cheap
+champions would be a maze wall and terrain would be redundant.
 
-**Why units block.** The earlier rule was that units did not affect pathing. It
-was replaced because it required an enemy to walk *into* a hex it is not allowed to
-enter, and because the worry it guarded against — mazing with bodies — is bounded
-here. The board is 7 wide (it mazes nothing, see "Why terrain needs a
-destination"), a unit cap is planned, and battles are meant to be small-scale with
-slow spawning, so a board clogged with bodies should not arise. Terrain keeps its
-own job: it picks the lane, costs no unit slot, and cannot be killed by the wave.
-
-**One unit per hex, always.** Blocking and occupancy are separate rules. The
-search *prices* an occupied hex; the step *enforces* occupancy — a unit never
-enters an occupied hex, whatever the search planned. Nothing stacks: one champion
-or one enemy per tile, never two.
+**Nothing passes through anything.** One unit per hex, champion or enemy, and no
+unit ever steps into an occupied hex — not a champion's and not another enemy's.
+Enemies cannot walk past each other. This is TFT's rule rather than PvZ's, and it
+suits small waves of distinct enemies: order and formation matter, and a tank at
+the front of a wave really is in front. Small rosters trickling in over time are
+what keep this from turning into traffic jams.
 
 **Movement is decided one hex at a time.** Units keep no route. On arriving at a
 hex an enemy chooses its next, and aggro takes precedence: with a target in range
@@ -162,28 +177,45 @@ it stops and attacks; with a target out of range it steps toward a free hex with
 range of it; with none it steps toward the exit. "Toward" means lower *path*
 distance from a search over the tile array — not raw hex distance, which stalls
 behind terrain. Nothing is cached, so nothing goes stale when a hex fills or a tree
-falls.
+falls. The search ignores units entirely; occupancy is enforced only by the step.
 
-**When the hex it wants to stop on is taken, it moves to another hex that still
-has its target in range.** If no such hex is free, it falls through to the
-ordinary "nothing in range → path to the exit" branch and keeps walking. No
-special case: an enemy that cannot attack is an enemy with no target, and that
-state already has a rule.
+**What a blocked enemy does:**
 
-The one genuinely new state is an enemy with no reachable attack hex *and* no
-path to the exit, which waits. That is a possible stall source, and it is left
-alone on purpose — spawn pacing, wave size and terrain limits all move it, and
-which of them to reach for is unanswerable until there is a board to watch.
+- **Its next step is a champion's hex** → that champion becomes its target and it
+  fights from where it stands. If it was locked onto something else, the lock
+  drops — it was walking, so there is no attack windup to reset.
+- **The attack hex it wants is held by another enemy** → it sidesteps to another
+  free hex within range of the same target. If none is free, it waits where it is,
+  keeping its target, until one opens. This is how TFT units crowd around a
+  target.
+- **It is walking to the exit and its next step holds another enemy** → it waits
+  for the hex to clear. This is a default, not a considered decision; if queues
+  look bad, the first thing to try is letting it take an equally short
+  alternative step, which pointy-top's two forward diagonals often provide (§4).
+
+**Why this replaced the flat-cost model.** The previous rule (2026-09-20) priced
+an occupied hex at one flat high cost in the search, so enemies flowed through
+gaps around champions and only walked into one where a wall left no gap. That
+made champions a soft second kind of terrain. With champions stationary, terrain
+should be the only thing that decides where enemies walk; champions decide where
+they are held. The original problem the flat cost solved — an enemy routing *into*
+a hex it may not enter — is now answered directly: the champion on its route
+becomes its target.
+
+Waiting is a possible stall source. Small waves make it rare, but it matters more
+than it used to: the next wave does not start until the current one resolves, so
+one stuck enemy holds up the round. Deliberately not pre-solved — handle it if
+playtesting shows it (§4).
 
 ### Seal prevention
 
 The board is only 7 wide, so a single row of terrain closes it entirely.
 
-Less critical than it first appears: enemies always have a target once units are
-in range, so they can't be locked out of fighting. The rule exists because
-**every** enemy falls back to pathing at the exit whenever nothing is in range —
-including one that has a target but no free hex to attack it from — and that path
-has to exist. Seal the board and those enemies have nowhere to go and stop.
+Champions do not count toward a seal. Enemies fight through a champion rather
+than routing around it, so a wall of champions is a fight, not a seal. Terrain is
+different: enemies route around it, and any enemy without a target needs a route
+to the exit. Seal the board with terrain and those enemies have nowhere to go and
+stop.
 
 Reject any terrain placement leaving zero valid path from spawn to exit. Run A* on
 the placement preview and grey out illegal hexes. Needed from the moment terrain
@@ -226,6 +258,10 @@ into your cluster — only exists if enemies have a pull toward the exit. If
 enemies simply walked at the nearest unit, they would already be coming to you
 and a tree would delay them by a second and nothing more.
 
+With champions stationary, this matters more: once a round starts, where enemies
+walk is the only thing about the fight's geography that can still be shaped, and
+terrain is what shapes it.
+
 This is why the exit survived the crystal being cut.
 
 ### Terrain destruction
@@ -237,6 +273,28 @@ bosses or large waves can stomp through.
 Destroyed terrain is **not permanently lost**, but also **not free to restore**.
 There must be a cost or cooldown — gold price, wave timer, regrowth condition.
 Mechanism undecided.
+
+### Champion combat
+
+**Champions never move during a round.** No walking, no stepping toward an enemy.
+
+- **Ranged champions** lock onto the **closest enemy in range** and keep that
+  target until it dies, leaves range, or the lock is broken by a taunt or an
+  interrupt. Then they re-scan. "Closest" is hex distance — a champion never
+  walks, so path length means nothing to it. No free-hex test either, for the
+  same reason.
+- **Melee champions** attack enemies in adjacent hexes. Whether they lock the
+  same way when several enemies are adjacent is open (§4); locking is the default
+  assumption.
+- **Healers heal during combat only.** Nothing heals between waves. The full heal
+  at the start of prep is free, so a healer's value is keeping a board standing
+  across the waves of a round.
+- Taunts and interrupts use the general lock-break mechanism below — one code
+  path for every way a lock ends, on either side.
+
+Stationary champions put weight on range: a ranged champion's coverage is a fixed
+circle of hexes for the whole round, and terrain's job is to steer enemies
+through it.
 
 ### Enemy aggro (TFT rules)
 
@@ -260,7 +318,9 @@ oscillation the lock exists to prevent.
 
 - **No target** → scan every tick for the nearest player unit that satisfies both
   conditions, acquire.
-- **Has target** → hold until the target dies. No re-scan.
+- **Has target** → hold until the target dies. No re-scan. The exceptions are the
+  general lock-break cases below — notably a champion blocking its route, which
+  makes that champion the new target (§2, "Blocking model").
 - **No valid candidate** → keep pathing toward the exit.
 - **No player units on the board at all** → everything paths to the exit. This is
   also the state the checkmate lose condition lives in.
@@ -277,22 +337,25 @@ questions and must not be unified:
 
 | Question | Measure | Why |
 |---|---|---|
-| Which target is nearest? | **Path length** | Diverges from hex distance once terrain exists; affordable at 56 tiles |
+| Which target is nearest (enemies)? | **Path length** | Diverges from hex distance once terrain exists; affordable at 56 tiles |
 | Is a target in range? | **Hex distance** | Closed-form on the coords, no A* in the tick loop |
+
+Champions use hex distance for both, since they do not move.
 
 **Contested hexes are resolved by re-checking, not by reserving.** Two enemies can
 acquire the same champion, see the same single free hex, and both head for it.
 Occupancy is taken when an enemy **begins the step** into a hex and released from
 the one it leaves — not on arrival, or two enemies mid-move into the same hex both
-complete and stack. The one that loses the race drops its lock and re-scans on the
-same tick, which re-runs acquisition: another free hex in range of the same
-champion means it re-acquires that champion and heads there, and only if none
-exists does it fall through to exit-pathing. Dropping the lock is not walking
-away.
+complete and stack. The one that loses the race **sidesteps**: if another hex in
+range of the same champion is free, it heads there; if none is, it **waits where
+it is, keeping its lock**, until one opens.
 
-This does not violate the no-flip-flop rule. The lock protects attack windup, and
-an enemy that loses a contested hex was still walking, so there is no windup to
-reset. Different situation from re-evaluating a target mid-fight.
+(This replaces an earlier rule where the loser dropped its lock and fell back to
+exit-pathing. With enemies unable to pass each other, crowding around a target is
+the TFT behaviour and the better read.)
+
+This does not violate the no-flip-flop rule: the enemy keeps its target, and it
+was walking anyway, so there is no windup to reset.
 
 **Small execution-order variation is expected and accepted.** The logic is
 deterministic; the execution is not perfectly so. A unit surviving a tick longer
@@ -317,23 +380,23 @@ of fire. That's the complexity being declined; a "blocks line of fire" terrain
 type is the eventual fix (§5).
 
 **Second known consequence, and this one is intended.** A champion whose six
-neighbours are all occupied cannot be acquired by any melee enemy — there is
-nowhere to stand — so melee streams past it. Range-2 enemies can still hit it from
-a ring further out where hexes are free. Tight formations protect their interior
-from melee, which is a real positioning decision and the same mechanism as the
-assassin bodyblock counter. It looks like enemies ignoring a unit the first time
-you see it. It isn't.
+neighbours are all occupied by other champions cannot be acquired by any melee
+enemy — there is nowhere to stand — so melee enemies fight the outer ring instead.
+Range-2 enemies can still hit it from a ring further out where hexes are free.
+Tight formations protect their interior from melee, which is a real positioning
+decision and the same mechanism as the assassin bodyblock counter.
 
 ### Assassins (replaces Runners)
 
 The backline threat. **Runners are cut** — an enemy that ignores everything and
 sprints at a crystal is a damage check you either pass or fail, with no
-positional counterplay. Assassins ask a question you answer by rearranging your
+positional counterplay. Assassins ask a question you answer by arranging your
 board.
 
 **Passive pathing is ordinary.** An assassin walks like any other enemy, is
-blocked by terrain like any other enemy, and acquires the nearest player unit in
-range like any other enemy. Out of combat it is not special.
+blocked by terrain, champions and other enemies like any other enemy, and
+acquires the nearest player unit in range like any other enemy. Out of combat it
+is not special.
 
 **The leap is an ability, gated on mana.** TFT-style: the assassin builds mana by
 attacking and by taking damage. On cast it leaps past the frontline onto a
@@ -370,8 +433,7 @@ must *survive your frontline long enough to cast*. That is a window:
 
 **Terrain still works on assassins**, indirectly: it shapes which lane they walk
 up and how long they are under fire before reaching your line, which lowers the
-odds they live to cast at all. That matters — terrain-immune assassins would be a
-hard counter to the Woodland build with no answer.
+odds they live to cast at all.
 
 **Watch for the inert assassin.** The self-leap fallback means a board with no
 free hex in leap range turns the cast into nothing at all. With no unit cap
@@ -384,74 +446,136 @@ but this is the specific thing to watch.
 **Scoping note:** the leap needs mana, which needs GAS. Assassins are not an
 early enemy. First enemies are dumber than this.
 
-### Consequence to watch (Step 3)
+### Consequence to watch: the blocker
 
-Units are hard stops. An enemy that acquires a target
-stops and fights until one of them dies — so a single cheap unit anywhere along
-the route halts every regular enemy that comes into its range.
+Champions are hard stops for anything that walks into them, and enemies cannot
+pass each other either. So a single cheap champion in a lane holds not only the
+enemy fighting it but everything queued behind that enemy.
 
-That's a lot of stopping power for one gold. Chip units become valuable
-time-buyers; very PvZ, where one wall-nut buys enormous time.
+That is more stopping power than the earlier model gave a unit, and a lot for one
+gold. Chip units become valuable time-buyers.
 
 **Watch for the blocker wall.** With no ranged enemy archetype (see §5), a line
-of cheap tanks may stop everything, and assassins become the only answer to it.
-That is a lot of load on one archetype. If it proves degenerate, ranged enemies
-are the natural fix — and you'll know exactly why you're adding them.
+of cheap tanks may stop everything. Range-2 enemies can attack over the enemy in
+front of them, and assassins leap past the line, but that is a lot of load on two
+answers. The unit cap is the structural limit: at 6 or less a full wall is
+impossible. If it still proves degenerate, ranged enemies are the natural fix —
+and you'll know exactly why you're adding them.
 
 ### Lock breaking (parked, but build the hook now)
 
 Inspired by Edge of Night: something makes a unit untargetable, every enemy
 locked onto it drops the lock, and the normal "no target → scan" path takes over.
 
-Build as a **general mechanism**, not a stealth special-case — target dies,
-target becomes untargetable, target leaves range: one code path, one flag on the
-target. Stealth, blinks, and anything later just set the flag.
+Build as a **general mechanism**, not a stealth special-case. Every way a lock
+ends goes through one code path: target dies, target becomes untargetable, target
+leaves range, a champion blocks the route (enemies), taunted, interrupted. One
+flag or tag on the target where that applies. Stealth, blinks, taunts and
+anything later just set it. The mechanism serves champions and enemies alike.
 
 Note this is much stronger here than in TFT. Breaking a lock in TFT redirects
 damage. Breaking it here can send a clump of enemies walking at the exit,
 since they re-scan, find nothing in range, and resume pathing. Closer to a
 repositioning tool than a survivability one. Wants a real board to test on.
 
-### Wave structure and spawn pacing
+### Rounds and waves
 
-**Waves are discrete, with a fixed roster.** Wave 8 is a specific set of, say,
-10 enemies. The wave ends when the roster is resolved — every enemy dead or
-exited. No timer for now; if a stall turns out to be possible, add one then.
+Two words, two things. Use "round", not "level" — level means an Unreal map.
 
-If one does appear, the occupancy guard below is the likely cause: enemies clog
-back to the spawn hexes, spawning halts, and a roster that cannot finish entering
-cannot resolve. Not worth pre-solving — just recognise it on sight rather than
-debugging it from scratch.
+**A round** is a prep phase followed by a fixed list of waves — currently **3**,
+a placeholder. The count is per-round data (each round's row lists its waves),
+not a constant.
 
-Discrete beats continuous because it gives a readable round you can learn from,
-it makes scoutable comps meaningful (a comp is a comp, not a rate), and it has no
-congestion cliff at wave 30.
+**Prep (between rounds).** The player buys, sells, and freely repositions
+champions and terrain, on the board and bench. Every living champion heals to
+full. Dead champions stay dead. The round begins when the player presses
+**Start**. There is no prep timer.
 
-**Spawn pacing: timer sets the rate, occupancy is a guard.**
+**Waves run back to back with no player input.** A wave begins spawning only once
+every enemy of the previous wave is resolved — dead or exited. Between waves
+there is no repositioning and no healing; the board ends one wave in exactly the
+state it starts the next. The round ends when its last wave is resolved, and play
+returns to prep.
+
+That gives a round a shape: three tests of one board, with damage accumulating
+across them. Prep is where decisions are made; the round is where they are
+judged.
+
+Where a wave number used to stand for the run's progression ("wave 30", "a soft
+cap around wave 50"), read round number. Leaks are counted per round and in total.
+
+**A wave is a fixed roster.** A given wave is a specific set of enemies — say,
+four Grux and three Belica. What is *not* authored is exactly when each enemy
+spawns or which spawn hex it uses; both come from the spawn timer and from which
+spawn hexes are free at the time. The roster is the design; the delivery varies
+from run to run.
+
+**Wave progress** is the share of the roster **resolved** — dead or exited: 0%
+when the wave begins, 50% once half of it is gone. Exits count, so a leak can never
+freeze progress short of a threshold. Progress gates *when* a roster entry is
+allowed to spawn. Each entry carries a spawn window:
+
+- **Early** — first in line while progress is low (e.g. under ~10%). An early
+  entry that has not spawned by the time progress passes the threshold becomes
+  **Any**: early means "front of the queue", not "now or never", so a wave can
+  never strand an enemy that missed its window.
+- **Any** — whenever a spawn is due.
+- **Late** — only once progress is high (e.g. over ~95%).
+
+The thresholds are placeholders. The main use is **fast enemies spawning early or
+late**, when the board is clear enough for speed to mean something. Mid-wave, with
+nobody able to pass anybody, a fast enemy stuck behind a slow one is just a slow
+enemy.
+
+Discrete waves beat continuous spawning because they give a readable unit you can
+learn from, they make scoutable comps meaningful (a comp is a comp, not a rate),
+and they have no congestion cliff late in a run.
+
+### Spawn pacing
+
+**One randomized timer per wave sets the rate, occupancy is a guard, windows set
+eligibility.**
 
 ```
-spawn when (SpawnInterval elapsed for this hex) AND (hex is free)
+the first enemy of a wave spawns immediately
+then: wait a random delay in [MinSpawnInterval, MaxSpawnInterval]
+when it has elapsed AND a spawn hex is free AND some roster entry's window is open:
+    spawn that entry on a random free spawn hex, draw the next delay
+otherwise the timer stays elapsed and the spawn happens the moment all three hold
 ```
+
+At most one enemy enters per delay, from whichever spawn hex is free. One timer
+for the wave, not one per hex: the entry rate is one number to reason about — a
+7-enemy wave takes roughly 7 × the mean delay to enter, however many spawn hexes
+are enabled. The randomness matches "timing is not authored" better than a fixed
+interval while still preventing bursts.
 
 The timer does the design work. Occupancy only ever *delays* a spawn — it never
 makes one happen sooner, and it exists to prevent spawning into an occupied tile.
+The combination gives backpressure for free: normally the timer binds and pacing
+is what you tuned; with enemies stacking at the door, occupancy binds and entry
+slows on its own. With enemies unable to pass each other, a jam at the entrance
+throttles arrivals directly.
 
-Occupancy alone was tried and rejected: with 3 spawn hexes clearing in about a
-second of walking, a 10-enemy roster lands in ~4 seconds. That's a lump, not
-pacing.
+History: a per-hex `SpawnInterval` timer came first; then occupancy-only spawning
+(no timers) was adopted briefly on 2026-11-17 with the pacing moved to the wave
+split, and rejected the same day because a whole wave lands in about a second.
+Occupancy alone is a lump, not pacing.
 
-The combination gives backpressure for free. Normal wave, the timer binds and
-pacing is what you tuned. Wave going badly and enemies stacking at the door,
-occupancy binds and entry slows on its own.
+If a wave ever cannot finish, the occupancy guard is a likely cause: enemies clog
+back to the spawn hexes, spawning halts, and a roster that cannot finish entering
+cannot resolve. Not worth pre-solving — just recognise it on sight.
 
-`SpawnInterval` is a placeholder number (§4). The thing it must be tuned against
-is **board crossing time**: if the whole roster enters before the first enemy
-reaches your line, the wave is one big fight; if entry outlasts a crossing, you
-get a stream with an opening, a middle and a tail.
+`MinSpawnInterval` / `MaxSpawnInterval` are placeholder numbers (§4), held for
+now on the level's spawn configuration next to the spawn hexes. The thing they
+must be tuned against is **board crossing time** (3.5 s): if the whole roster
+enters before the first enemy reaches your line, the wave is one big fight; if
+entry outlasts a crossing, you get a stream with an opening, a middle and a tail.
 
-**Number of enabled spawn hexes is a per-level difficulty dial.** One is a
-trickle into a chokepoint; five is a broad push that spreads your line thin.
-Free lever, already in the data model.
+**Number of enabled spawn hexes is a per-level difficulty dial** — for *width*,
+not rate. One is a trickle into a chokepoint; five is a broad push that spreads
+your line thin. The two dials stay independent: hex count decides how wide the
+push is, the timer decides how fast it comes.
 
 ### Enemy range
 
@@ -459,10 +583,11 @@ Free lever, already in the data model.
 mean "same hex", which one-unit-per-tile makes impossible.
 
 This is not a ranged *archetype* (see §5, parked). It is an engagement-density
-control. A pointy-top hex has six neighbours, so with all-melee enemies exactly
+control. A pointy-top hex has six neighbours, so with all-melee enemies at most
 six can engage one blocker and the rest of the wave queues up doing nothing —
-which looks broken and makes late waves drag. Range 2 lets a second rank attack
-over the first.
+which looks broken and drags. Range 2 lets a second rank attack over the first,
+which matters more now that enemies cannot walk past each other. Worth keeping a
+few range-2 enemies in most waves.
 
 Range 3 is reserved for something scary later.
 
@@ -474,8 +599,8 @@ a comp instead. Smoother, and each enemy's stats stay stable and readable.
 
 ### Scoutable waves
 
-Waves have visible comps (e.g. "Wave 12: 6 Undead / 3 Bruiser") and can be
-scouted a round or two ahead. Preserves the "read the lobby and tech a counter"
+The upcoming round's waves have visible comps (e.g. "Wave 2: 4 Undead / 3
+Bruiser") during prep, and can be scouted a round or two ahead. Preserves the "read the lobby and tech a counter"
 skill from TFT without needing other players, and gives the PVE AI a personality
 to play against.
 
@@ -538,44 +663,49 @@ multiplicatively per level, as in TFT (roughly ×1.8 health and ×1.5 damage per
 level there, so 3-star is ×3.24 and ×2.25); the actual multipliers are tuning data
 read by the champion's initial GameplayEffect once GAS exists.
 
-Unresolved: the per-star multipliers, and whether a star-up heals the survivor.
-Both wait on GAS and interact with persistent damage (below) and with the
-sell-value rule in Section 4, "Selling damaged units".
+Unresolved: the per-star multipliers, which wait on GAS. Whether a star-up heals
+the survivor no longer matters: a merge only happens on a buy, buying is prep-only,
+and every living champion is at full HP in prep. The decided rule — star-up keeps
+the HP fraction — stays as the neutral default.
 
-### Persistent damage
+### Damage, healing, and death
 
-Units do **not** reset to full HP between waves. Wounded stays wounded, dead
-stays dead. Damaged units function normally — HP is just HP.
+**Damage lasts for the round.** A champion keeps its HP across the waves of a
+round. Nothing heals between waves; the only healing during a round is what
+healer champions do in combat. Damaged units function normally — HP is just HP.
 
-Healing between waves is a paid action. Death is not the routine expense; death
-is what happens when you fall behind on the routine expense. This makes backline
-healers and shielders genuine **economy** pieces — a support that heals 30%
-between waves is worth its slot in gold saved.
+**Living champions heal to full at the start of every prep phase**, for free.
 
-That only holds if healing can't be bypassed by selling a wounded unit and buying
-a fresh one — see Section 4, "Selling damaged units".
+**Death is permanent.** A champion that dies is gone for the run — not restored at
+round start. HP is the round's resource; champions are the run's. Its pool copies
+return to the pool, with no refund.
 
-### Free repositioning between waves
+This replaces the earlier model, where damage persisted across the whole run and
+between-wave healing was a paid action. What changes:
 
-Full repositioning in the shop/prep phase, like TFT. No moving units mid-combat.
+- A round is a multi-wave attrition test with a clean slate after it — except
+  for the champions you lost.
+- Healers are combat pieces, not economy pieces.
+- Gold no longer has a healing sink, so "what absorbs gold late" loses a
+  candidate (§4).
+- Selling a damaged unit launders nothing — selling is prep-only, and in prep
+  every living unit is already at full HP. The damaged-sell rule that the paid
+  heal needed is gone with it.
 
-Repositioning covers the bench too: board to bench, bench to board, and bench to
-bench are all free during prep. Pulling a badly-hurt unit off the board to the
-bench is a legitimate move, and one the player will reach for often once
-persistent damage bites.
+### Repositioning
 
-Persistent damage and free repositioning interact well: rotate wounded units
-back, fresh ones forward, park the damaged near healers. Fiddly board management
-that autobattler players enjoy.
+**Between rounds only.** Full repositioning in prep, like TFT — champions and
+terrain, board and bench. Board to bench, bench to board, and bench to bench are
+all free during prep. No repositioning during waves and none between waves.
 
 ### Gold collection
 
-**Kill gold is the wave income.** There is no flat per-wave payout: each enemy
-carries a gold value, and the moment it dies that gold **auto-collects** into the
-player's total. No mandatory clicking. The HUD shows a `+N` at the gold counter for
-each kill, so the player watches income arrive. Gold earned mid-wave can't be spent
-until the wave ends (shop, sell and heal all lock during combat), so it builds up
-and is spent in prep. Interest, streaks and anything like them are separate
+**Kill gold is the only income.** There is no flat per-wave or per-round payout:
+each enemy carries a gold value, and the moment it dies that gold
+**auto-collects** into the player's total. No mandatory clicking. The HUD shows a
+`+N` at the gold counter for each kill, so the player watches income arrive. Gold
+earned mid-round can't be spent until the round ends (shop and sell lock during
+combat), so it builds up and is spent in prep. Interest, streaks and anything like them are separate
 systems, not part of this. Rare and elite enemies drop a bounty the player has a
 few seconds to click for.
 
@@ -596,18 +726,19 @@ The bench clause matters: a champion sitting on the bench is a move the player
 still has, so an empty board alone is not a loss. The condition is "no piece can
 reach the board", not "the board is empty".
 
-Falls naturally out of persistent death plus gold; no new systems needed. Nice
+Falls naturally out of permanent death plus gold; no new systems needed. Nice
 property: a player down to one unit and no gold can theoretically claw back if
-that unit clears a wave. Rare, but memorable.
+that unit survives a round. Rare, but memorable.
 
 **Not chosen:** gold acting directly as health. Spending all your gold to field
 the strongest possible board should never be what kills you.
 
 ### Win condition / run structure
 
-Effectively endless. Soft cap around wave 50 as a "you win" ceiling most runs
-never reach. Replayability comes from high scores — "I got to 23 last time, can I
-hit 30?"
+Effectively endless, with a soft "you win" ceiling most runs never reach.
+Replayability comes from high scores — "I got to round 8 last time, can I hit
+10?" The ceiling was set around wave 50 before rounds existed; restate it in
+rounds once wave counts are tuned.
 
 ### Gameplay Ability System
 
@@ -645,11 +776,12 @@ The one exception is the untargetable flag, which fits naturally as a tag
 lock-break mechanism described above — stealth, blinks, and anything later just
 apply the tag.
 
-**Persistent damage needs explicit handling.** GAS attributes normally live and
-die with the actor, and most GAS material assumes a reset each round. Units here
-keep their HP across waves. Simplest approach: unit actors survive between waves
-and are never destroyed and respawned. Otherwise attribute values have to be
-serialized out and restored.
+**HP carries across waves, so attributes need explicit handling.** GAS attributes
+normally live and die with the actor, and most GAS material assumes a reset each
+round. Here, HP persists across the waves of a round. Champions are never
+destroyed and respawned between waves or rounds. The prep full heal is an
+explicit effect applied to living champions, not a reset or respawn. Dead
+champions are removed and not restored.
 
 **Introduce it at Step 2, not Step 1.** GAS has real setup cost — ability system
 component, attribute set, effect boilerplate, plugin config that's easy to get
@@ -671,14 +803,17 @@ just below is a collapse, and a small swing in board strength can separate them.
 That is sharp for a scaling curve and it is the most likely source of a wave that
 feels unfair. The natural softener is AoE damage, which gets *better* as the
 clump grows — worth having at least one AoE-ish champion so the failure curve
-isn't a cliff.
+isn't a cliff. Small rosters soften this too.
 
-Being overrun is also **spatial**: enemies that stop to fight occupy hexes, so a
-growing clump pushes deeper into your zone until enemies stop next to your
-backline. Falling behind compresses your formation and exposes the squishy
-things. Good failure mode — don't design it out.
+Being overrun is also **spatial**: enemies that stop to fight occupy hexes, and
+the ones behind them cannot pass, so a growing clump presses against your line
+and, as front champions die, pushes deeper into your zone until enemies stop next
+to your backline. Falling behind exposes the squishy things. Good failure mode —
+don't design it out.
 
-**Attrition.** Persistent damage means a bad wave makes the next wave harder.
+**Attrition.** Damage carries across the waves of a round, so a bad first wave
+makes the second and third harder. Across rounds, the only carryover is death —
+HP resets, losses don't.
 
 **These two are not yet independent.** With leaks free, the only cost of being
 overrun is the damage your units take while the clump grows — which is attrition.
@@ -695,92 +830,39 @@ for. Until then, wave design has one real pressure to lean on, not two.
 Explicitly deferred. Cannot be tuned from a document.
 
 Open questions: gold per kill (flat or by enemy type?), interest and streaks (there
-is no flat per-wave income; kills are the income), reroll cost, unit tier pricing,
-healing cost, gold in vs gold out across a 20+ wave run.
+is no flat per-wave or per-round income; kills are the income), reroll cost, unit
+tier pricing, gold in vs gold out across a long run.
 
-**What absorbs gold at wave 30+?** Once the board is full and units are maxed,
-something has to keep consuming income or the run becomes a formality until the
-wall. Candidates: terrain rebuilds, scaling healing costs, unit replacement.
+**What absorbs gold late?** Once the board is full and units are maxed, something
+has to keep consuming income or the run becomes a formality until the wall.
+Healing is free now, so it is no longer a candidate. Remaining candidates: terrain
+rebuilds, replacing dead units.
 
 Rough starting points, purely so there's something to push against — all of these
 are wrong, they're just wrong in a specific enough way to learn from:
 
 - Unit cost 1/2/3 by tier
-- No flat wave income; kill gold only, about 1 gold per enemy to start
-- Healing roughly 1 gold per 20% HP restored
+- No flat income; kill gold only, about 1 gold per enemy to start
 - 5 shop slots, 6 bench slots, reroll 2 gold, sell refunds full purchase price
-  (at full HP — see "Selling damaged units")
 
-### Selling damaged units (healing laundering)
-
-**The problem.** Damage persists between waves and healing is a paid action, so a
-healer is worth its slot in gold saved. But if selling refunds the full price, a
-player can sell a wounded unit and buy a fresh one for nothing — a free full heal,
-and healers stop mattering. With a roster of 3–4 champions and 5 shop slots, the
-sold champion is almost always in the shop to buy back, so shop randomness is not
-enough friction. Applies mainly to 1-star units: selling a 2-star returns 3 copies
-and rebuying needs 3 copies out of the shop plus a merge (rerolls, bench room); a
-3-star needs 9.
-
-**Leading candidate (not decided; needs GAS, since HP doesn't exist before it).**
-Sell value depends on HP, binary:
-
-- **At full HP:** full purchase price. Buying the wrong champion, or a unit that
-  fought without taking damage, still sells for full price.
-- **Below full HP:** a lower refund, `DamagedSellRefundPercentage` of price. A
-  fraction of price rather than a raw gold amount so it scales with tier and star.
-- **Merged units:** copies × (full price or damaged refund), so a damaged 2-star
-  gets 3× the damaged refund.
-- Tunable `FullPriceHpThreshold`, default 100%, so the cliff below can be softened
-  (e.g. 95%) without changing the rule.
-
-HP becomes a second currency: undamaged units are liquid, wounded ones aren't, and
-healing back to full restores resale value on top of fighting capacity.
-
-**The ratio that has to hold.** Any sell-based rule is capped: the worst penalty is
-losing the whole price. If a full heal costs more than a unit, replacing a badly
-hurt unit is always cheaper than healing it, whatever the sell rule. At roughly
-1 gold per 20% HP a full heal is 5 gold, and a 1–3 gold unit can never be penalized
-by 5. So **price minus damaged refund must be at least the cost of a full heal.**
-Either scale unit prices up (e.g. 10/20/30 with a 50% damaged refund) or make
-healing cheaper. Either way this moves only `EconomyConfig` numbers, all of which
-are placeholders.
-
-**Known downsides.**
-- **A cliff.** 1 HP of damage costs the whole price gap when selling, and healing
-  the last sliver is suddenly worth the whole gap, so players will feel pushed to
-  top off. That may be a feature (healers matter more); `FullPriceHpThreshold`
-  softens it if not.
-- **The penalty doesn't grow with damage.** A unit at 99% and one at 10% lose the
-  same amount on sale; the ratio rule above is what keeps that from being a leak.
-- **The UI must show the sell value** and its change, or it reads as a hidden tax.
-
-**Related rules to hold.**
-- **Benching must not heal.** Bench units take no damage and do nothing; if
-  they also recover HP, that is a free heal that skips the sell rule entirely.
-  Healing happens only through the paid action.
-- **Star-up keeps the HP fraction** (decided). A star-up scales max
-  HP, and carrying over absolute HP would leave a merged unit looking badly
-  hurt; preserving the fraction is neutral — no free heal, no penalty. A bonus heal
-  on star-up (e.g. 50% of missing HP) is not exploitable, since a merge costs two
-  extra copies, but it makes merges double as heals; wait until healing prices
-  feel right in play.
-
-**Considered, not chosen.** A flat sell fee (punishes selling healthy units,
-coarse at 1–3 gold, gives up "sell is a free undo"); a sell value proportional to
-HP fraction (coarse at integer gold, needs a floor rule to bite at all); accepting
-the leak for 1-stars (bounded by a cheap unit's price, but it guts the healer's
-economic role).
+(The "Selling damaged units" problem and its leading-candidate rule were dropped
+on 2026-11-17: they existed because healing was a paid action and damage outlived
+the round. With a free full heal every prep and selling locked to prep, there is
+nothing to launder.)
 
 ### What a leak costs
 
 **That it will cost something is decided. What, is not.** Candidates: gold loss
-on leak, reduced income for the wave, damage to a random unit on the way out, a
-score penalty.
+on leak, damage to a random unit on the way out, a score penalty. Do not build one
+until it is chosen.
 
-The instrument comes first. Leaks per wave and cumulative leaks against a
-competent board at wave 5 versus wave 15 tell you which lever fits and how hard
-it needs to pull. Until a cost exists, leaking drains pressure off a wave for
+This matters more now: HP resets every round, so with leaks free, a bad round
+costs only the champions that died in it. Leaks are the likely source of the
+missing pressure.
+
+The instrument comes first. Leaks per round and cumulative leaks against a
+competent board early versus late tell you which lever fits and how hard it needs
+to pull. Until a cost exists, leaking drains pressure off a wave for
 free, so early difficulty readings are softer than the finished game should be —
 read them with that in mind rather than tuning wave sizes up to compensate.
 
@@ -791,20 +873,46 @@ chosen above — the chosen cost stacks on top, so size it knowing leaks already
 hurt. The counter itself still costs nothing directly and the decision above stays
 open, but the "leaking is free" caveat is softer than it reads.
 
-### Spawn interval
+### Wave split and spawn timing
 
-`SpawnInterval` per spawn hex. Must be tuned against board crossing time, which
-Checkpoint 1 measures. Placeholder until then.
+How many enemies go in each wave, how many waves in each round (currently 3), and
+the spawn delay range (`MinSpawnInterval` / `MaxSpawnInterval`, placeholder
+1.0–2.0 s). Tune them together against board crossing time (3.5 s, measured in
+Checkpoint 1). A per-wave override of the delay range is one field on the round
+data if later rounds should trickle faster; not added until play asks for it.
+
+### Spawn windows
+
+The early/late progress thresholds (~10% / ~95%) are placeholders.
+
+### Stuck waves
+
+The next wave waits on the current one, so an enemy that can neither reach a
+target nor the exit — or is boxed in behind other enemies — freezes the round.
+Deferred until it is seen in play. Do not add a wave timer or safety net. If
+needed, candidates include leftover enemies speeding up after a while, or leaving
+through the exit.
+
+### Enemy queued behind another enemy
+
+An enemy walking to the exit whose next hex holds another enemy currently waits.
+If queues look bad, try letting it take an equally short free alternative step —
+a small change to the next-step choice.
+
+### Melee champion locking
+
+When several enemies are adjacent, does a melee champion lock onto one until it
+dies, as ranged champions do? Locking is the default assumption.
 
 ### The death spiral
 
 Conditional on leaks eventually costing something (see "What a leak costs"). If
 they hurt the economy, a spiral is possible. This is probably **correct** for
 an endless high-score game — it makes endings decisive instead of a slow bleed,
-and gives the run a story ("wave 23 went badly and it all came apart").
+and gives the run a story ("round 6 went badly and it all came apart").
 
-Requirement: the spiral must be **fast**. Two or three waves to resolution. If
-playtesting shows someone limping for six waves knowing they're dead, tighten it.
+Requirement: the spiral must be **fast**. A round or two to resolution. If
+playtesting shows someone limping along knowing they're dead, tighten it.
 
 ### Terrain regrowth specifics
 
@@ -821,7 +929,7 @@ Barely discussed. Unclear whether the game wants them at all.
 Liked or at least interesting, but explicitly excluded from MVP to avoid feature
 sprawl.
 
-- **Augments.** TFT-style, three choices at waves 3/9/15. Cheapest way to make
+- **Augments.** TFT-style, three choices at fixed rounds. Cheapest way to make
   runs feel different. Strong candidate for first post-MVP addition.
 - **Mid-combat repositioning.** A limited number of "commands" per wave to drag a
   unit during the fight. Revisit after the prototype proves the basic loop.
@@ -835,13 +943,16 @@ sprawl.
 - **Wounded units perform worse.** Damaged units losing effectiveness, not just
   sitting closer to death. Cut because it's a whole stat-degradation system
   hiding in one bullet — which stats, on what curve, communicated how? HP alone
-  communicates "this unit is in trouble" fine for a prototype. Revisit only if
-  playtesting shows attrition doesn't feel like anything.
+  communicates "this unit is in trouble" fine for a prototype.
 - **Leaks damaging the economy.** A leak costing gold, income, or a shop slot
   rather than a generic HP bar. This is the leading candidate for what a leak
   eventually does (§4), but it is a tuning problem wearing a design idea's
   clothes — it needs real income curves and real leak counts first.
-
+- **Spawn variety beyond the per-level array.** Brainstormed 2026-11-17, not
+  adopted yet: a pre-placed enemy vanguard at wave start with the rest streaming
+  in behind it; spawn hexes that change per wave and are shown in prep; rifts
+  that open mid-wave with a warning; enemy nests that spawn until destroyed.
+  Worth revisiting if waves start to feel samey.
 - **Ranged enemy archetype.** Enemies that outrange your board and must be
   approached. Cut from MVP as too much complexity to balance right now — not
   rejected, deferred. Note the current range-1/2 values are engagement-density
@@ -870,6 +981,17 @@ sprawl.
   at it is a PvZ shape, and it made an entire archetype a pure damage check. The
   exit keeps the pull that terrain needs without the bar
 - **Runners.** Replaced by assassins. No positional counterplay
+- **Enemies passing through each other (PvZ-style).** Small, distinct waves want
+  order and formation to matter
+- **Enemies walking through champions' hexes, or routing around them.** Replaced
+  by "units stop": enemies fight through champions instead. Both the original
+  "units don't block" rule and the 2026-09-20 flat occupied-hex cost are retired
+- **Champions moving during combat.** Champions are stationary (§1)
+- **Paid between-wave healing / run-long persistent damage.** Replaced by a free
+  full heal each prep and permanent death; the damaged-sell rule went with them
+- **Occupancy-only spawning and per-hex spawn timers.** Replaced by one
+  randomized timer per wave
+- **Flat-top hexes.** Considered; pointy-top kept
 
 ---
 
@@ -878,17 +1000,19 @@ sprawl.
 Deliberately minimal. Everything not on this list is a later problem.
 
 - 2 traits
-- 2–3 champions
+- 2–3 champions, stationary, with TFT-style targeting
 - A few enemy types, including at least one assassin and one terrain-breaker.
   Enemy range 1 or 2 only; no ranged archetype
 - One terrain type (trees)
 - A shop, with a bench that bought champions land on
 - A basic economy
-- Persistent damage plus between-wave healing
-- Wave spawning with scoutable comps
+- Rounds of three waves with a Start button; prep between rounds only
+- Damage that lasts the round, full heal between rounds, permanent death
+- Wave spawning on a randomized timer from free spawn hexes, with spawn windows
+  and scoutable comps
 - Lose condition (checkmate)
 - An exit behind the back row with a leak counter that does nothing yet
-- Endless waves
+- Endless rounds
 
 ### Art and assets
 
@@ -934,17 +1058,17 @@ No units, no shop, no combat. Spawn point, pathfinding across the hex grid, reac
 the back row, despawn, increment the leak counter. Least fun milestone in the
 project and the most important, because it establishes whether the board size and
 enemy speed produce a fight that lasts 20 seconds or 4. Every other number is
-tuned against that one — including `SpawnInterval`.
+tuned against that one — including how many enemies go in a wave.
 
 **Step 2 — One unit that shoots it.**
 Now there's a game loop. Ugly, but real.
 
 **Step 3 — Blockers.**
-Melee unit stands on a hex, enemy engages instead of walking past. Ordinary
-enemies only — assassins need mana and therefore GAS, so they arrive after step 2
-at the earliest, and realistically alongside the first real abilities. Where the
-aggro model gets its real answer, and where you find out whether pathing handles
-"a unit is in the way" gracefully or whether enemies pile up stupidly.
+Melee unit stands on a hex, enemy walks into it and fights instead of passing.
+Ordinary enemies only — assassins need mana and therefore GAS, so they arrive
+after step 2 at the earliest, and realistically alongside the first real
+abilities. Where the aggro model gets its real answer, and where you find out
+whether enemies crowd a blocker gracefully or pile up stupidly.
 
 **Step 4 — Terrain.**
 One tree, placed manually, no trait attached yet. Confirm it reroutes pathing
@@ -961,6 +1085,10 @@ surprise you.
 occupancy want deterministic tile costs, and NavMesh rebuilds mid-wave are a
 headache worth avoiding. The search runs as a distance query over the tile array
 and is consulted one step at a time; "A*" elsewhere in these docs means it.
+
+**Route planning ignores units.** Only terrain is impassable in the search. Units
+block at the moment of stepping, through the occupancy check. That split is the
+code-level form of "terrain redirects, units stop".
 
 **The grid is data, not actors.** A flat array of tile structs — coordinate,
 walkable flag, occupant reference, terrain reference, path cost. Visual hex
@@ -993,19 +1121,21 @@ If they do, two dials in order of preference:
 Don't pre-solve this. Just don't hardcode the zone depth.
 
 **Does one cheap unit trivialize a wave?**
-Units are hard stops, so a single unit in range halts every regular enemy that
-reaches it. Step 3 answers whether that's a satisfying
-time-buying strategy or a degenerate one. With no ranged enemy archetype, a wall
-of cheap tanks is the specific version to watch, and assassins are currently the
-only answer to it.
+Champions are hard stops and enemies cannot pass each other, so a single unit in
+a lane holds the enemy fighting it and everything queued behind. Step 3 answers
+whether that's a satisfying time-buying strategy or a degenerate one. With no
+ranged enemy archetype, a wall of cheap tanks is the specific version to watch;
+the unit cap is the first dial.
 
-**How does spawn interval relate to board crossing time?**
-The ratio decides whether a wave is one big fight or a stream with a tail. Both
-numbers are placeholders; crossing time is measured in Checkpoint 1 and
-`SpawnInterval` is set against it afterwards.
+**How fast should a wave enter against board crossing time?**
+Wave size and the spawn delay range decide whether a wave is one big fight or a
+stream with a tail. Crossing time was measured in Checkpoint 1 (3.5 s); both are
+set against it.
 
 **Do leaks need to cost anything?**
-The counter is instrumented and inert. If a competent board leaks nothing until
-wave 12, leak damage isn't the difficulty lever and the exit stays a despawn.
+The counter is instrumented and inert. With HP resetting every round, leaks are
+the likeliest source of round-to-round pressure — but if a competent board leaks
+nothing for many rounds, leak damage isn't the difficulty lever and the exit
+stays a despawn.
 
 Everything after that is a playtest question, not a design-document question.

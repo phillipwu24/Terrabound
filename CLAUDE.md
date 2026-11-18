@@ -13,8 +13,9 @@ Instructions for Claude Code working in this repository.
 
 Single-player roguelike fusing TFT-style autobattler mechanics with tower defense.
 Player buys champions from a shop, places them on a hex board, and defends an
-exit behind the back row against waves of enemies. Endless run, chase a high
-score.
+exit behind the back row against enemies that trickle in over the course of each
+wave. Champions are stationary during combat. Play is structured as rounds of
+waves. Endless run, chase a high score.
 
 **Engine:** Unreal Engine 5.8
 **Language:** C++ for all logic. Blueprints for data and assembly only.
@@ -23,7 +24,9 @@ score.
 placement, trait counter, pathfinder, plus star-up (3-copy merge) added afterwards.
 Checkpoint 2 is the current plan: enemies walking, then GAS and the first champion
 that shoots, then blockers and aggro. See `PLAN.md`. Phase 1 tasks 1.1 (`TryOccupy`) and
-1.2 (`EnemyData`, `EnemyBase` walking) are done; 1.3 (spawn hex config) is next.
+1.2 (`EnemyData`, `EnemyBase` walking) and 1.3 (spawn hex config) are done; next is 1.2b
+(route planning ignores units). Design revised 2026-11-17 (stationary champions, units
+stop, rounds of waves, round-long damage) — `DESIGN.md` header.
 
 ## Build command
 
@@ -52,6 +55,9 @@ rather than trying to work around it.
 - **Keep asking as you go.** If execution turns up a decision the plan missed,
   stop and raise it the same way rather than guessing. Do not invent gameplay
   behaviour — the plan is expected to be imperfect, not the last chance to ask.
+- **Approval doesn't relax precedence.** An approved plan still cannot override an
+  architecture invariant, and a decision the plan surfaces is resolved in these
+  docs, not invented on the spot.
 
 ## Precedence
 
@@ -89,46 +95,47 @@ coordinates; they turn neighbor lookups into parity special-cases.
 **Pointy-top hexes, odd-r offset rows.** All 8 rows are 7 wide and stagger
 against each other, laid out like the TFT board. Which parity shifts right is
 fixed once and never changes — every neighbor lookup depends on it. Currently
-locked to **odd rows shift right (+X)**.
+locked to **odd rows shift right (+X)**. Flat-top was considered and declined.
 
-**Terrain blocks pathing outright. Units block it at a flat cost.** Terrain is
-impassable in the pathfinding cost function. An occupied hex — champion or enemy —
-is passable to the *search* but carries one flat, high cost, identical for every
-unit: it never reads HP, tier, stats, or team. The cost only steers route choice.
-Enemies flow through any gap before they route through a unit, and where a wall
-leaves no gap the search routes through it. High cost rather than impassable is
-deliberate: a sealed wall then needs no "no route exists" special case — the enemy
-walks up, cannot enter the occupied hex, and aggro makes it attack the blocker.
-What stops an enemy at a unit is aggro (see Targeting) — range, not adjacency; a
-range-2 enemy stops two hexes short of the unit it acquired — and, physically, the
-occupancy check on the step. Concretely: `Occupant` and `bIsWalkable` are
-independent fields. Never derive one from the other; the cost function reads both.
-Because the cost is flat, wall depth counts — an approach is drawn toward the thin
-part of a wall until a champion is in range. Accepted.
+**Terrain redirects. Units stop.** Terrain is impassable in the pathfinding cost
+function; enemies plan routes around it. Units — champions and enemies alike — are
+invisible to route planning: the search never reads `Occupant`. Enemies walk
+their route, and when a champion is in the way they stop and fight through it.
+Keeping these distinct is load-bearing: if route planning avoided units, players
+would maze with bodies and terrain would become redundant. Concretely: `Occupant`
+and `bIsWalkable` are independent fields. Never derive one from the other. Units
+block at the moment of stepping, via occupancy — not in the search. (This
+replaced the 2026-09-20 flat occupied-hex cost; `DESIGN.md` §"Blocking model".)
 
-**One unit per tile. Priced by the search, enforced by the step.** A hex holds at
-most one `ABoardUnitBase` — champion or enemy, no stacking. The search may route
-through an occupied hex at a cost, but a unit never *enters* one, whatever the
-search planned: the occupancy check on the step (see "Contested hexes") is a hard
-rule. `bIsWalkable` answers "does terrain permit a path across this tile";
-`Occupant == nullptr` answers "can a unit stand here". Code that conflates the two
-will either let units stack or make terrain and units the same thing, and both are
-wrong.
+**One unit per tile, and nothing passes through anything.** A hex holds at most
+one `ABoardUnitBase` — champion or enemy, no stacking — and no unit ever steps
+into an occupied hex. Enemies cannot walk through champions or through each
+other. `bIsWalkable` answers "may a route be planned across this tile";
+`Occupant == nullptr` answers "may a unit step onto it". Code that conflates the
+two will either make units part of routing or let units stack, and both are wrong.
 
-When the tile an enemy wants to stop on is taken, it moves to another tile that
-still has its target in range. If none is free it falls through to the ordinary
-"nothing in range → path to the exit" branch. No special case — an enemy that
-cannot attack is an enemy with no target.
+What a blocked enemy does:
+
+- **Next step is a champion's hex** → that champion becomes its target (this is a
+  lock break if it was locked elsewhere) and it fights from where it stands.
+- **The attack hex it wants is held by another enemy** → it sidesteps to another
+  free hex within range of the same target. If none is free, it waits in place,
+  keeping its lock, until one opens.
+- **Walking to the exit, next step holds another enemy** → it waits for the hex to
+  clear. Default only; flagged as open in `DESIGN.md`.
 
 **Movement is decided one hex at a time. Units store no path.** Each time an
 enemy arrives on a hex it chooses the next one, target check first — aggro takes
 precedence. Locked target in range: stop and attack. Locked target out of range:
 step toward a free hex within range of it. No target: step toward the exit.
 "Toward" means lower *path* distance, from a search over the tile array (terrain
-infinite, occupied hex the flat cost) — never raw hex distance, which stalls behind
-terrain. Take the neighbour with the lowest distance; ties are arbitrary (drift is
+infinite, units ignored) — never raw hex distance, which stalls behind terrain.
+Take the neighbour with the lowest distance; ties are arbitrary (drift is
 accepted, below). Because nothing is cached, nothing goes stale when a hex fills or
 terrain changes.
+
+**Champions never move during a round.** No champion movement code in combat.
+Repositioning happens only in prep, between rounds.
 
 **Range is measured in hexes.** Store champion and enemy range as a tile count.
 Convert to world units at query time. Never store range in centimeters.
@@ -142,6 +149,35 @@ mid-wave are a headache to avoid.
 **The player zone depth is a config value, not a constant.** Currently 5 rows.
 This number will change. Never hardcode it or derive from it. Derive the zone
 as rows `BoardDepth - PlaceableRowCount` through `BoardDepth - 1`.
+
+## Rounds and waves
+
+- **Round** = prep phase + a fixed list of waves (currently 3 per round). The count
+  is per-round data — each round's row lists its waves — not a constant. The round
+  starts when the player presses **Start**. No prep timer. Say "round", not
+  "level" (level = Unreal map).
+- **Prep** is the only time the player can buy, sell, or reposition champions and
+  terrain. Living champions heal to full at the start of prep.
+- **Waves** run back to back with no player input. The next wave starts spawning
+  only once every enemy of the current wave is dead or exited. No repositioning
+  and no healing between waves.
+- **A wave is a fixed roster.** Spawn timing and which spawn hex each enemy uses
+  are not authored.
+- **Wave progress** = share of the roster resolved (dead **or exited**, 0–100%).
+  Each roster entry has a spawn window — early, any, or late — gated on progress.
+  An early entry that misses its window becomes any, so no entry can be stranded.
+  Thresholds are placeholder config.
+- **Spawn pacing: one randomized timer per wave, not per hex.** The first enemy
+  spawns immediately; after each spawn a delay is drawn from
+  `[MinSpawnInterval, MaxSpawnInterval]`. When it has elapsed, a spawn hex is free,
+  and an entry's window is open, the next eligible entry spawns on a random free
+  spawn hex. Otherwise the timer stays elapsed. Occupancy only ever delays a spawn.
+- **`RoundManager` and `WaveManager` are separate.** `RoundManager` owns the
+  prep/combat phase, Start, the round index, and the prep full heal.
+  `WaveManager` owns the current wave: roster, progress, spawn windows, the spawn
+  timer.
+- Stuck-wave handling is deliberately not built. Do not add a wave timer or
+  safety net unless asked.
 
 ## Gameplay Ability System
 
@@ -172,12 +208,17 @@ of distinct champions carrying the trait can never be reached.
 it. This is the general lock-break mechanism — stealth, blinks, and anything
 later just apply the tag.
 
-**Attributes must persist across waves.** Units keep their HP between waves; the
-default GAS assumption of "reset each round" is wrong here. Unit actors survive
-between waves and are never destroyed and respawned. Selling a champion, and
-merging copies into a star-up, are intentional removals and are exempt (a merge
-upgrades the surviving unit in place — it is never recreated); no board-refresh
-or wave-reset path may destroy and recreate units.
+**HP persists across the waves of a round; death is permanent.** The default GAS
+assumption of "reset each round" is wrong here. Unit actors survive between waves
+and rounds and are never destroyed and respawned. The prep full heal is an
+explicit effect applied to living champions, not a reset. Dead champions are
+removed and never restored. Selling a champion, and merging copies into a star-up,
+are intentional removals and are exempt (a merge upgrades the surviving unit in
+place — it is never recreated); no board-refresh, wave-reset, or round-reset path
+may destroy and recreate units.
+
+**Healers heal during combat only.** There is no between-wave healing step and no
+paid heal.
 
 **GAS is not introduced until Step 2 of the design-rationale build order** — the
 first champion that shoots something. Checkpoint 1 sits before that and contains
@@ -209,11 +250,15 @@ fields start being read.
 - Per-tile flags kept independent: `is_spawn`, `is_placeable`, `is_walkable`
 - One unit per tile. `Occupant` is a single reference to `ABoardUnitBase`, which
   is why champions and enemies share that base — one field covers both sides.
+- Seal prevention applies to terrain only. Champions never count toward a seal,
+  because enemies fight through them rather than routing around them.
 - **Unit cap:** a flat config value, `UnitCap` on `DA_BoardConfig`, counting board
   champions only (a placeholder, marked unresolved; built in `PLAN.md` 3.6, so do
   not add a cap check before then). How it is calculated beyond a flat number
   (growth per wave or level) has not been decided. A row is 7 wide, so a cap of 6
-  or less makes a full unit-only wall impossible — that is the lever. Settled, so
+  or less makes a full unit-only wall impossible — that is the lever, and it
+  matters because a champion holds everything queued behind the enemy fighting
+  it. Settled, so
   it needn't be re-asked: bench champions do not count toward it; a swap
   (board↔board, or bench→occupied hex) never changes the board count and is
   always allowed, so only bench→empty hex is subject to the cap; the drag preview
@@ -254,7 +299,18 @@ fields start being read.
 ## Targeting
 
 TFT rules. Getting this subtly wrong produces bugs that look like animation
-problems, so implement it exactly:
+problems, so implement it exactly.
+
+### Champions
+
+- Champions never move.
+- **Ranged champions** lock onto the closest enemy in range by hex distance and
+  hold it until it dies, leaves range, or the lock is broken (taunt, interrupt,
+  untargetable). Then re-scan. No free-hex test — they don't move.
+- **Melee champions** attack enemies in adjacent hexes. Whether they lock when
+  several are adjacent is open in `DESIGN.md`; default to locking, and flag it.
+
+### Enemies
 
 - Aggro range and attack range are the same value
 - **Acquisition needs two conditions, not one:** the candidate is in range by hex
@@ -262,8 +318,11 @@ problems, so implement it exactly:
   enemy's own hex counts. Both tests are cheap — filter on them before ranking
   survivors by path length, so A* never runs on candidates about to be discarded
 - **No target:** scan every tick for the nearest valid candidate, acquire
-- **Has target:** hold until the target dies. No re-scan, no timer
+- **Has target:** hold until the target dies. No re-scan, no timer. Lock-break
+  cases (below) are the only exceptions
 - **No valid candidate:** continue pathing toward the exit
+- **A champion in the route:** if the next step is a champion's hex, that champion
+  becomes the target
 - **"Nearest" uses path length. "In range" uses hex distance.** Two measures, two
   questions, deliberately not unified. Range checks must not run A* — they happen
   every tick. Consequence accepted: enemies shoot through trees; terrain does not
@@ -277,8 +336,9 @@ problems, so implement it exactly:
   it stops the wave queuing behind one blocker's six neighbours. Do not scale
   range with wave number; scale the proportion of range-2 enemies instead
 - **Assassins, not Runners.** Runners are cut. An assassin paths and is blocked
-  by terrain like any other enemy. Its **leap is a mana-gated ability** that
-  **always resolves** — no cancel, no refund, no retarget. It ignores terrain, it
+  by terrain, champions and enemies like any other enemy. Its **leap is a
+  mana-gated ability** that **always resolves** — no cancel, no refund, no
+  retarget. It ignores terrain, it
   does **not** ignore occupancy (a packed backline has no legal landing hex), and
   when no legal landing hex exists it **leaps to the hex it already occupies**,
   spending the cast and keeping its current target. Leap distance is a per-enemy
@@ -288,9 +348,9 @@ problems, so implement it exactly:
 **Contested hexes: re-check, don't reserve.** Take occupancy when an enemy
 *begins the step* into a hex and release the one it left. Checking only on arrival
 lets two enemies mid-move into the same hex both complete, which stacks them. The
-loser of a race drops its lock and re-scans on the same tick — another free hex in
-range of the same champion means it re-acquires that champion, and only if none
-exists does it fall through to exit-pathing. Dropping the lock is not walking away.
+loser of a race **sidesteps** to another free hex in range of the same target; if
+none exists it **waits in place, keeping its lock**. It does not fall back to
+exit-pathing.
 
 **Execution-order drift is accepted, not fought.** The logic is deterministic; the
 execution is not perfectly so, and identical boards may resolve slightly
@@ -303,13 +363,12 @@ race for a hex; it may never put two units on one. That comes from the occupancy
 check on the step, not from ordering. Outcomes vary; legality does not.
 
 Do not re-evaluate an existing target every tick. That causes flip-flop between
-two equidistant units, resetting attack windup so neither takes damage. A
-contested-hex loss is not this case — that enemy was walking, so there is no
-windup to reset.
+two equidistant units, resetting attack windup so neither takes damage.
 
-Build target loss as one general mechanism (target dies / becomes untargetable /
-leaves range / loses its attack hex → drop lock → normal re-scan), not as a
-stealth special-case.
+**Lock loss is one general mechanism**, shared by champions and enemies: target
+dies / becomes untargetable / leaves range / a champion blocks the route (enemies)
+/ taunted / interrupted → drop lock → normal re-scan (or adopt the blocking
+champion). Not a set of special cases.
 
 ## Build order
 
@@ -322,8 +381,8 @@ questions first:
    across the grid, reach the back row, despawn. Establishes whether the
    board size and enemy speed produce a fight worth having.
 2. **One unit that shoots it.** First real game loop. GAS arrives here.
-3. **Blockers.** Melee unit on a hex, enemy engages instead of walking past.
-   Where the aggro model gets its real test. Assassins come later still — the
+3. **Blockers.** Melee unit on a hex, enemy walks into it and fights. Where the
+   aggro model gets its real test. Assassins come later still — the
    leap needs mana, so it cannot precede GAS at step 2.
 4. **Terrain.** One tree, placed manually, no trait attached. Confirm pathing
    reroutes cleanly.
@@ -347,10 +406,13 @@ actually feels like to play.
 ## Deliberately not built
 
 Do not add these, do not scaffold for them, do not suggest them unprompted:
-augments, bosses, items, mid-combat repositioning, enemy-side terrain,
-depth-based stat bonuses, additional traits beyond the two in MVP scope,
-stat degradation on wounded units, a ranged enemy archetype, an HP crystal or
-nexus, Runners, line-of-fire blocking.
+augments, bosses, items, mid-combat repositioning, champion movement during
+combat, enemies passing through each other or through champions, route planning
+that prices or avoids units, between-wave or paid healing, a damaged-sell rule,
+enemy-side terrain, depth-based stat bonuses, additional traits beyond the two in
+MVP scope, stat degradation on wounded units, a ranged enemy archetype, an HP
+crystal or nexus, Runners, line-of-fire blocking, stuck-wave timers or safety
+nets, a leak penalty before one is chosen.
 
 `PLAN.md` carries a second, checkpoint-scoped out-of-scope list covering systems
 that *are* in the MVP but are not part of the current checkpoint. Both apply.
@@ -380,7 +442,7 @@ The table below is the same rule applied per system, not a second rule.
 | Pathfinding: distance search, next-step choice | Ability visuals, VFX, animation graphs |
 | Targeting, aggro, lock/re-scan | Wave definitions, trait thresholds, tuning |
 | Combat resolution, GAS attribute sets | UI widget layout and binding |
-| Wave spawning, economy state | Level setup, spawn hex configuration |
+| Wave spawning, round/wave flow, economy state | Level setup, spawn hex configuration |
 
 The reason for the line: the moment a Blueprint owns tile state, something reads
 it through an actor reference and the grid-is-data invariant quietly dies.
@@ -423,7 +485,7 @@ Source/Terrabound/
 ├── Abilities/      AttributeSet, GameplayEffects, ability base classes
 ├── Terrain/        TerrainPieceBase, PlacementValidator
 ├── Economy/        ShopSystem, EconomyState, Bench, ChampionMerger
-├── Waves/          WaveManager, WaveDefinition
+├── Waves/          SpawnHexConfig, RoundManager, WaveManager, WaveDefinition
 └── Data/           ChampionData, EnemyData, BoardConfig (UDataAssets)
 
 Content/Terrabound/
@@ -466,11 +528,11 @@ Expose, as `UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=...)`:
 
 - Design and balance parameters — max HP, attack damage, attack speed, range in
   hexes, tier, costs, income, reroll cost, shop and bench slot counts, trait
-  thresholds
+  thresholds, spawn-window thresholds
 - Board configuration — `BoardWidth`, `BoardDepth`, `PlaceableRowCount`,
   `HexRadius`
-- Level configuration — which far-edge hexes are spawn-enabled, camera framing,
-  zoom and pitch limits, drag thresholds
+- Level configuration — which far-edge hexes are spawn-enabled, the spawn delay
+  range, camera framing, zoom and pitch limits, drag thresholds
 - Anything else where the only alternative is a code change
 
 Also expose, as `UFUNCTION(BlueprintCallable)`, any operation a level Blueprint
@@ -492,9 +554,11 @@ with the grid afterwards, because nothing reads it afterwards. A Blueprint-held
 copy of live tile state can, and is forbidden.
 
 That generation-time array is built in Checkpoint 2 (`PLAN.md` 1.3) as a
-level-placed actor holding the array and `SpawnInterval`; at startup it calls the
+level-placed actor (`ASpawnHexConfig`) holding the array; at startup it calls the
 grid's `BlueprintCallable` setter for each hex. The actor and the setter are both
-legitimate; neither puts tile state in a Blueprint.
+legitimate; neither puts tile state in a Blueprint. The same actor will also hold
+the spawn delay range (`PLAN.md` 1.4b) — level configuration, read by
+`WaveManager`, never written back.
 
 **When unsure, ask.** Name the specific variable and ask whether it should be
 exposed. Do not guess in either direction.

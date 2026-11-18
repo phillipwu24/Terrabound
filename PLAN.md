@@ -5,9 +5,14 @@
 
 Companion to `CLAUDE.md` and `DESIGN.md`. This document covers **one checkpoint only**.
 
-**Scope:** the first fights. Enemies that walk the board, GAS, a champion that shoots, and enemies
-that stop and fight blockers. **No assassins, no mana or cast abilities, no terrain, no trait
-effects, no chosen leak cost.**
+**Scope:** the first fights. Enemies that trickle onto the board in rounds of waves, GAS, a
+stationary champion that shoots, and enemies that stop and fight the champions in their way. **No
+assassins, no mana or cast abilities, no terrain, no trait effects, no chosen leak cost.**
+
+**Revised 2026-11-17** for the design revision in `DESIGN.md` (header): route planning ignores units
+(new task 1.2b), `RoundManager` and `WaveManager` split (1.4a/1.4b), one randomized spawn timer per
+wave with spawn windows, round-long damage with a free prep heal (the paid heal is gone), contested
+hexes sidestep or wait. Decisions D0, D1, D8–D10, D13, D14 changed; D17–D20 are new.
 
 **Shape:** three phases, in this order, each answering the riskiest open question first.
 
@@ -37,38 +42,41 @@ assume them; change one here first if it needs revisiting.
 
 | # | Question | Decision |
 |---|---|---|
-| D1 | Which actions are allowed mid-wave? | **Prep only.** Buy, reroll, sell, heal, drag and placement all lock during combat. A mid-wave merge would destroy a fighting unit, and `DESIGN.md` already says no moving units mid-combat. |
-| D2 | What starts a wave? | **The player**, via a `StartWave` console command and key. No prep timer. A Ready button is UI, which waits. |
-| D3 | How does the player earn gold? | **Kill gold only; no flat per-wave income** (the unused `BaseIncomePerWave` is removed). Each enemy carries a flat `GoldOnKill` on `EnemyData` (placeholder 1; a per-type value is the same field with another number). It is granted automatically the moment the enemy dies, and the HUD shows a `+N` at the gold counter. Gold can't be spent until the wave ends (D1), so it builds up in combat and is spent in prep. `StartingGold` funds the first prep. Interest and streaks are separate systems, later. A leaking enemy drops no gold: that is an intended punishment for leaking, additional to any leak cost chosen later. |
+| D0 | Rounds and waves (`DESIGN.md` §"Rounds and waves", §"Spawn pacing") | A **round** runs prep to prep and holds a fixed list of **waves**. Wave N+1 starts spawning the moment wave N is resolved (every enemy dead or exited); the round ends when its last wave resolves, and play returns to Prep. Combat lasts the whole round. **One timer only:** the per-wave spawn timer (D14). No prep timer, no gap between waves, no stuck-wave timer. |
+| D1 | Which actions are allowed mid-round? | **Prep only.** Buy, reroll, sell, drag and placement all lock during combat, which spans every wave of the round. A mid-round merge would destroy a fighting unit, and champions never move during a round. |
+| D2 | What starts a round? | **The player**, via a `StartRound` console command and key (the **Start** in `DESIGN.md`). No prep timer. A Start button is UI, which waits. |
+| D3 | How does the player earn gold? | **Kill gold only; no flat per-wave income** (the unused `BaseIncomePerWave` is removed). Each enemy carries a flat `GoldOnKill` on `EnemyData` (placeholder 1; a per-type value is the same field with another number). It is granted automatically the moment the enemy dies, and the HUD shows a `+N` at the gold counter. Gold can't be spent until the round ends (D1), so it builds up in combat and is spent in prep. `StartingGold` funds the first prep. Interest and streaks are separate systems, later. A leaking enemy drops no gold: that is an intended punishment for leaking, additional to any leak cost chosen later. |
 | D4 | A champion dies: what happens to its pool copies? | **Return them to the pool, no refund.** Otherwise deaths shrink the pool for good and an endless run dries the shop up. A dead star-up returns every copy it is worth. |
-| D5 | How do champions pick targets? | **Nearest enemy in range by hex distance**; hold until it dies, becomes untargetable, or leaves range. No free-hex test, because champions don't move. |
+| D5 | How do champions pick targets? | **Nearest enemy in range by hex distance**; hold until it dies, becomes untargetable, or leaves range. No free-hex test, because champions don't move. Melee champions (range 1) use the same rule, so they lock too — the default `DESIGN.md` §4 leaves open; flag it if it reads wrong in play. Taunt and interrupt are future lock breaks through the same path; neither is built. |
 | D6 | Which attributes exist now? | **Health, MaxHealth, AttackDamage, AttackSpeed.** Mana and Armor arrive with the first cast ability, which is where they do something. |
 | D7 | What does an attack do? | **Instant damage on activation** in Phase 2 (3.8 adds the hit delay from D16), cooldown `1 / AttackSpeed`. No windup or projectile. |
-| D8 | Star-up and HP | **Star-up keeps the HP fraction** (max HP grows, current HP scales with it). Stat multipliers are placeholders: ×1.8 health and ×1.5 damage per level; attack speed and range stay flat (decided). |
-| D9 | Paid heal shape | **1 gold per 20% of MaxHealth**, one step per press, prep only. Hover the unit (or carry it) and press `H`, mirroring sell's `E`. Debug-grade UI. |
-| D10 | Damaged-sell rule (`DESIGN.md` §4) | **Not built.** Until it exists, selling and rebuying launders damage. Known, accepted for this checkpoint; don't test heal pricing that way. |
+| D8 | Star-up and HP | **Star-up keeps the HP fraction** (max HP grows, current HP scales with it). Stat multipliers are placeholders: ×1.8 health and ×1.5 damage per level; attack speed and range stay flat (decided). Since merges happen only on a prep buy, after the prep heal (D17), the fraction is always 1 in practice; the rule stays as the neutral default. |
+| D9 | Paid heal shape | **Withdrawn (2026-11-17): there is no paid heal.** Living champions heal to full for free at the start of prep (D17). |
+| D10 | Damaged-sell rule (`DESIGN.md` §4) | **Withdrawn (2026-11-17): moot.** Selling is prep-only and every living unit is at full HP in prep, so sell-and-rebuy launders nothing. |
 | D11 | Unit cap | **Flat config value**, placeholder **10**, marked unresolved, on `DA_BoardConfig`. It counts board champions only. A cap of 6 or less makes a full-row wall impossible, so tune it down during 4.2. The growth formula is deferred. |
-| D12 | Where do spawn hexes live? | **A level-placed C++ actor** holding the array and `SpawnInterval`, not a level Blueprint graph. The array is data on the placed instance and needs no graph. |
-| D13 | Wave data shape | **`DT_Waves`**, one row per wave, each row a roster of `{EnemyData, count}`. Waves past the table repeat the last row. The endless scaling formula is out of scope. |
-| D14 | `SpawnInterval` starting value | **1.5 s**, marked unresolved, tuned in 1.7 against the 3.5 s crossing time. |
+| D12 | Where do spawn hexes live? | **A level-placed C++ actor** holding the array, not a level Blueprint graph. The array is data on the placed instance and needs no graph. A player-zone entry is an error: logged, its spawn flag cleared, and the hex kept a normal player hex. |
+| D13 | Round data shape | **`DT_Rounds`**, one row per round. Each row holds its own list of waves (3 each for now; there is no separate waves-per-round number), and each wave a roster of `{EnemyData, Count, SpawnWindow}` with `SpawnWindow` one of Early / Any / Late. Rounds past the table repeat the last row. The endless scaling formula is out of scope. |
+| D14 | Spawn timing | **One randomized timer per wave, not per hex.** The first enemy of a wave spawns at once; after each spawn the next delay is drawn uniformly from `[MinSpawnInterval, MaxSpawnInterval]` (placeholders **1.0 / 2.0 s**). When the delay has elapsed, a spawn hex is free and an eligible entry exists, that entry spawns on a **random free spawn hex**; otherwise the timer stays elapsed. The range lives on `ASpawnHexConfig` (level configuration, next to the hexes), tuned in 1.7 against the 3.5 s crossing time. A per-wave override is not added until play asks. |
 | D15 | Animation | **Walk, basic attack and death are in scope** (1.8, 3.8), played from C++ as montages on the `UpperBody` slot that every stock Paragon ABP already has (`ANIMATION_FINDINGS.md`). No new or edited Animation Blueprints; the Paragon folders stay as imported. The clips are fields you assign on the data assets. Ability animations wait for mana. |
 | D16 | When does an attack's damage land? | **After a per-unit `AttackHitDelaySeconds`** (a data field, tuned by eye), because no montage in the packs has an impact notify to hang it on. It fizzles if the target died or became untargetable during the delay. Phase 2 stays instant until 3.8 adds it. |
+| D17 | Round-start heal | **`RoundManager` applies an instant heal-to-full GameplayEffect to every living board champion on entering Prep** (bench champions take no damage). It is an effect on surviving actors, never a reset or respawn. Dead champions stay dead (D4). Built in 2.7. |
+| D18 | Route planning and units | **The search ignores units entirely** (`CLAUDE.md` "Terrain redirects. Units stop."). `OccupiedTileCost` is removed from `FHexPathfinder`, `UBoardConfig` and `UHexGrid` (1.2b). An enemy whose next step is a champion adopts it as target (3.2); one whose next step holds another enemy waits (default; an equally short free alternative step is the first fix if queues look bad). |
+| D19 | Who owns round flow? | **Two world subsystems.** `URoundManager` (1.4a): phase (`Prep`/`Combat`), `StartRound`, round index, `DT_Rounds` lookup, leak counters, the prep heal. `UWaveManager` (1.4b): the current wave — roster, progress, spawn windows, spawn timer — and tells `RoundManager` when the wave resolves. |
+| D20 | Spawn windows | **Progress = resolved (dead or exited) ÷ roster size.** Early is open while progress < `EarlyWindowEnd` (placeholder 0.10), Late once progress ≥ `LateWindowStart` (placeholder 0.95), Any always. An Early entry still unspawned when its window closes becomes Any, so no entry is stranded. Thresholds live in `UTerraboundSettings` (project-wide wave rules, beside the star multipliers). Which eligible entry goes first is decided in 1.4b's plan. |
 
 ---
 
 ## Carried forward from Checkpoint 1
 
 - **Crossing time:** empty board is 7 hexes; at **2 hexes/s** that is **3.5 s**. This seeds
-  `EnemyData` speed and `SpawnInterval`. `OccupiedTileCost` (100, on `DA_BoardConfig`) must exceed
-  the longest detour.
+  `EnemyData` speed and the spawn timer (D14). `OccupiedTileCost` (100, on `DA_BoardConfig`) is
+  retired by 1.2b (D18).
 - **`UHexGrid::SetOccupant` overwrites.** It does not check occupancy, which is right for
   placement and wrong for a unit racing another into a hex. Task 1.1 adds a claim that fails.
 - **`ADebugPathWalker` is throwaway.** Delete it and `SpawnPathWalker` when `EnemyBase` walks (1.7).
   Keep `FHexPathfinder` and its tests.
 - **Star-up exists.** Units can be destroyed by merging, selling, and (new) dying. None recreates.
-- **The unresolved damaged-sell rule** (`DESIGN.md` §4) waits on HP, which arrives in Phase 2, but
-  is not built here (D10).
-- **Still open, deliberately:** leak cost, aggro radius beyond range, checkmate, scoutable wave UI.
+- **Still open, deliberately:** leak cost, aggro radius beyond range, checkmate, scoutable round UI.
 
 ---
 
@@ -76,14 +84,17 @@ assume them; change one here first if it needs revisiting.
 
 From `CLAUDE.md`, restated because each has a concrete consequence below.
 
-**One unit per tile, priced by the search, enforced by the step.** An enemy claims its next hex
-when it *begins* the step and releases the one it left. Checking on arrival lets two enemies
-mid-move into one hex both complete. Drift may decide who wins a race; it never puts two units on
-one tile.
+**Terrain redirects, units stop.** The search ignores units; only terrain is impassable. One unit
+per tile is enforced by the step: an enemy claims its next hex when it *begins* the step and
+releases the one it left. Checking on arrival lets two enemies mid-move into one hex both complete.
+Drift may decide who wins a race; it never puts two units on one tile.
 
 **Movement is one hex at a time, no stored path.** On each arrival, target check first. Locked and
 in range: stop and attack. Locked and out of range: step toward a free hex within range of it. No
-target: step toward the exit. "Toward" is lower *path* distance, never raw hex distance.
+target: step toward the exit. "Toward" is lower *path* distance, never raw hex distance. A next
+step onto a champion makes that champion the target; a next step onto an enemy waits.
+
+**Champions never move during a round.**
 
 **Targeting stays out of GAS.** `TargetingComponent` selects; the ability receives the target as
 data. No `AGameplayAbilityTargetActor`. `State.Untargetable` is a tag the scan filters on.
@@ -97,8 +108,9 @@ counting), filtered *before* ranking survivors by path length.
 **Execution-order drift is accepted.** No stable processing order, no deterministic tie-break, no
 replay guarantee. Do not add one.
 
-**Units persist across waves.** HP lives on the unit's ability system component and survives
-because the actor does. No wave-reset path may destroy and recreate units.
+**HP persists across the waves of a round; death is permanent.** HP lives on the unit's ability
+system component and survives because the actor does. The prep heal (D17) is an effect, not a
+reset. No wave- or round-reset path may destroy and recreate units.
 
 **GAS owns** health, attack damage, attack speed, abilities and their cooldowns, and stat effects
 such as the star multiplier. **GAS does not own** target selection.
@@ -110,8 +122,8 @@ asset or config. Live runtime state (HP, target lock, current coordinate) gets g
 `EditAnywhere`.
 
 **Not built, per `CLAUDE.md`:** a chosen leak cost (counter and event only; forfeited kill gold
-needs no code), an HP crystal, line-of-fire
-blocking, a ranged archetype, Runners.
+needs no code), an HP crystal, line-of-fire blocking, a ranged archetype, Runners, paid or
+between-wave healing, stuck-wave timers.
 
 ---
 
@@ -124,7 +136,7 @@ Source/Terrabound/
 ├── Units/          + EnemyBase
 ├── Combat/         + TargetingComponent, TargetingRules
 ├── Abilities/      + CombatAttributeSet, GA_BasicAttack, damage/heal/star GameplayEffects
-├── Waves/          + WaveManager, WaveDefinition, SpawnHexConfig
+├── Waves/          + SpawnHexConfig, RoundManager, WaveManager, WaveDefinition
 └── Data/           + EnemyData
 ```
 
@@ -193,43 +205,101 @@ distance field is recomputed on every decision, including every tick of a hold. 
 `AdvanceMovement(dt)` publicly so tests can drive it. `RangeInHexes` is validated by an editor clamp
 plus a runtime error log, not stored on the enemy, so nothing clamps at runtime.
 
+The "lone champion is routed around" behaviour came from the flat occupied-hex cost, which the
+2026-11-17 revision retires (1.2b).
+
+### 1.2b Route planning ignores units (`Pathfinding/`, `Grid/`, `Data/`)
+**[C++ + Editor]** — added 2026-11-17 (D18); do it after 1.3 is committed, before 1.4a.
+**C++:** `FHexPathfinder::TryGetEnterCost` stops reading `Occupant`; only terrain (`bIsWalkable`)
+affects the search. Remove `OccupiedTileCost` from `UBoardConfig`, its cached copy and getter on
+`UHexGrid`, and the comments that describe the flat cost (`HexPathfinder.h`, `EnemyBase.cpp`). An
+enemy whose next step is occupied keeps holding, as 1.2 already does; adopting a blocking champion
+as target is 3.2. Rewrite the tests built on the old model: `HexPathfinder.OneOccupiedHex` and
+`.FullOccupiedRow` assert the distance field is unchanged by occupants; `EnemyBase.LoneBlocker`
+asserts the enemy never enters the champion's hex and holds when its next step is that hex (with
+random ties it may also pass on the other diagonal — the fixture must account for that);
+`EnemyBase.SealedRow` asserts it holds in front of a full row.
+**Editor:** none required. `DA_BoardConfig` keeps a harmless stale serialized `OccupiedTileCost`
+until it is next saved.
+
+**Done when:** the build is clean, every headless test passes, and nothing in `Source/` mentions
+`OccupiedTileCost`.
+
 ### 1.3 Spawn hex config (`Waves/`)
 **[C++ + Editor]**
-**C++:** `ASpawnHexConfig`, a level-placed actor with `TArray<FHexCoord> SpawnHexes` and
-`SpawnInterval` (D12, D14). On `BeginPlay` it calls `UHexGrid::SetSpawnFlag` for each hex and hands
-`SpawnInterval` to `UWaveManager`. It logs an error for any hex in the player zone. The grid never
-holds a copy of the array; this is a value read once at startup.
-**Editor:** place one in `MainBoard`, set 3 far-edge spawn hexes.
+**C++:** `ASpawnHexConfig`, a level-placed actor with `TArray<FHexCoord> SpawnHexes` (D12). The
+spawn delay range (D14) is added to it in 1.4b, where it is first read. On `BeginPlay` it calls `UHexGrid::SetSpawnFlag` for each hex. A
+player-zone hex is an error: logged, its flag explicitly cleared, kept a normal player hex. An
+off-board hex is logged and skipped. The grid never holds a copy of the array; this is a value read
+once at startup. Spawn hexes get their own visual state, appended to `EHexTileVisualState`, and the
+grid fires a native `OnTileFlagsChanged` so the visualizer repaints regardless of `BeginPlay` order.
+**Editor:** add the new state's branch to `M_HexTile`; place one actor in `MainBoard`, set 3
+far-edge spawn hexes.
 
 **Done when:** the flagged hexes render as spawn hexes and are not placeable. The `SetSpawnFlag`
 console command may stay as a debug tool.
 
-### 1.4 `WaveManager` (`Waves/`)
+**Done (2026-11-18; PIE-verified by the user).** As built: `Waves/SpawnHexConfig.*`, visual state
+`Spawn` = 9 appended to `EHexTileVisualState` (`M_HexTile` branch added), native
+`UHexGrid::OnTileFlagsChanged(Coord)` fired by `SetSpawnFlag` only when the flag actually changes,
+and one headless test (`Terrabound.Waves.SpawnHexConfig.Apply`); 21/21 pass. `MainBoard` holds one
+config with spawn hexes (1,0), (3,0), (5,0); `SpawnEnemy DA_Enemy_Grux 3 0` works with no manual
+`SetSpawnFlag`. `SetSpawnFlag` itself accepts any valid coord: refusing a player-zone spawn hex is
+the config's rule, not a grid invariant. `ApplySpawnHexes()` is public so tests can call it.
+
+### 1.4a `RoundManager` (`Waves/`)
 **[C++]**
-`UWorldSubsystem` owning the run's flow.
+`URoundManager : UWorldSubsystem`, owning the run's flow (D19).
 
-- **Phase:** `Prep` or `Combat`, `GetPhase()`, `OnPhaseChanged`. `StartWave()` is valid only in
-  Prep, and refuses while a unit is carried (same reason `CanBuy` does).
-- **Waves:** `FWaveRow : FTableRowBase` holds a roster of `{TSoftObjectPtr<UEnemyData>, Count}`
-  (D13). `DT_Waves` is registered in `UTerraboundSettings` like the pool tables. Waves past the
-  table repeat the last row.
-- **Spawn pacing:** a spawn happens when `SpawnInterval` has elapsed for that hex **and** a
-  `TryOccupy` on it succeeds. The timer sets the rate; occupancy only ever delays.
-- **Resolution:** the wave ends when the roster is fully spawned and no enemy is alive. Back to
-  Prep, `WaveIndex` up. No timer, and no income is granted here (D3): gold comes only from kills.
-  (`BaseIncomePerWave` was already removed from `EconomyConfig`.)
-- **Leaks:** `OnEnemyExited` increments `LeaksThisWave` and `LeaksTotal`, logged per wave and
+- **Phase:** `Prep` or `Combat`, `GetPhase()`, `OnPhaseChanged`. `StartRound()` is valid only in
+  Prep, and refuses while a unit is carried (same reason `CanBuy` does). Combat spans every wave of
+  the round (D0).
+- **Rounds:** `FRoundRow : FTableRowBase` holds its list of waves, each a roster of
+  `{TSoftObjectPtr<UEnemyData>, Count, SpawnWindow}` (D13). `DT_Rounds` is registered in
+  `UTerraboundSettings` like the pool tables. Rounds past the table repeat the last row.
+- **Flow:** `StartRound` hands wave 1 to `WaveManager`; each time `WaveManager` reports its wave
+  resolved, the next wave starts at once, with no gap. After the last wave, the round ends: back to
+  Prep, `RoundIndex` up. The prep heal (D17) hooks in here in 2.7. No income is granted (D3).
+- **Leaks:** `OnEnemyExited` increments `LeaksThisRound` and `LeaksTotal`, logged per round and
   cumulatively. **No cost, no HP bar, nothing that reads the counter.**
-- **Debug:** `StartWave`, `WaveDump`.
+- **Debug:** `StartRound`, `RoundDump`.
 
-**Done when:** `StartWave` runs a small wave: enemies spawn paced, cross, exit, are counted, and
-the wave resolves back to Prep. (Nothing earns gold yet: enemies only exit in this phase. Kills, and
-so income, arrive in 2.2.)
+Until 1.4b exists, a wave can be stubbed as "resolved immediately" so the phase flow is testable
+headless; the stub is removed by 1.4b.
+
+**Done when:** a headless test drives Prep → Combat → (waves) → Prep with `RoundIndex` advancing,
+and `StartRound` refuses in Combat and while carrying.
+
+### 1.4b `WaveManager` (`Waves/`)
+**[C++ + Editor]**
+**C++:** `UWaveManager : UWorldSubsystem`, owning the current wave (D19).
+
+- **Spawn timer (D14):** first enemy at once; then a delay drawn from
+  `[MinSpawnInterval, MaxSpawnInterval]`, added to `ASpawnHexConfig` (placeholders 1.0 / 2.0 s,
+  `Min` ≤ `Max` validated). When it has elapsed, a spawn hex is free and an entry is eligible, spawn
+  it on a random free spawn hex via `TryOccupy`; else stay elapsed. Spawn hexes are read from the
+  grid's flags (set by 1.3); only the delay range is read from the actor.
+- **Progress and windows (D20):** progress = resolved ÷ roster size, where resolved counts deaths
+  and exits. Early / Any / Late eligibility as in D20, with a missed Early entry becoming Any.
+- **Resolution:** the wave is resolved when its roster is fully spawned and none of its enemies is
+  alive; it then tells `RoundManager`.
+- **Debug:** `WaveDump` (roster left, progress, timer).
+
+**Open for this task's plan:** which eligible entry spawns first (roster order or random), and
+whether the timer's random draw needs a seed (the drift rule says no).
+**Editor:** set the delay range on the `MainBoard` Spawn Hex Config actor.
+
+**Done when:** `StartRound` runs a small round: each wave trickles in on the free spawn hexes at
+the configured rate, crosses, exits and is counted; Late entries wait for progress; the next wave
+starts only when the previous one is resolved; and the round resolves back to Prep. Headless tests
+cover progress counting exits, a missed Early entry becoming Any, and occupancy delaying (never
+advancing) a spawn. (Nothing earns gold yet: enemies only exit in this phase. Kills, and so income,
+arrive in 2.2.)
 
 ### 1.5 Prep-phase gating (`Input/`, `Economy/`)
 **[C++]**
-While `Combat`: `ShopSystem::CanBuy`, `Buy`, `Reroll` and `Sell` refuse; `BoardPlayerController`
-refuses pickup and drop (D1). `StartWave` refuses while carrying, so no drag is ever live when
+While `RoundManager` is in `Combat`: `ShopSystem::CanBuy`, `Buy`, `Reroll` and `Sell` refuse; `BoardPlayerController`
+refuses pickup and drop (D1). `StartRound` refuses while carrying, so no drag is ever live when
 combat begins. Only *spending* locks: the gold counter keeps updating during Combat (D3).
 
 **Done when:** in Combat the shop cards grey and no unit can be lifted; in Prep everything behaves
@@ -242,24 +312,27 @@ it uses with `Enemy` in place of `Champion`: `DA_Champion_Grux` is mirrored by `
 are no `A`/`B` names. Enemies reuse the champion packs TFT-style (the team tint tells the sides
 apart), but each picks a *different mesh* from the pack than its champion uses. Make enough enemies
 that at least one has `RangeInHexes` 1 and one has 2 (your choice of which packs), so Phase 3 can test
-both. **`DA_Enemy_Grux` already exists** (range 1, made for 1.2's PIE check); the rest and `DT_Waves`
-remain. Placeholder stats, marked unresolved. Create `DT_Waves` in `Data/Waves/` (row struct
-`FWaveRow`) with waves 1–3, small rosters mixing range-1 and range-2 enemies, and point
-`UTerraboundSettings` at it.
+both. **`DA_Enemy_Grux` already exists** (range 1, made for 1.2's PIE check); the rest and `DT_Rounds`
+remain. Placeholder stats, marked unresolved. Create `DT_Rounds` in `Data/Waves/` (row struct
+`FRoundRow`) with rounds 1–3, each of 3 small waves (a handful of distinct enemies each) mixing
+range-1 and range-2 enemies, mostly `Any` windows with at least one `Early` and one `Late` entry,
+and point `UTerraboundSettings` at it.
 
-**Done when:** `StartWave` in PIE spawns wave 1's roster from data.
+**Done when:** `StartRound` in PIE spawns round 1's waves from data, one after another.
 
 ### 1.7 Measure and retire the walker
 **[C++ + Editor]**
-Watch a real wave. Record the crossing time from the enemy's own log against the 3.5 s from
-Checkpoint 1, and how the stream looks against `SpawnInterval` (one lump, or a stream with an
-opening, a middle and a tail). Tune `SpawnInterval`. Then delete `Debug/DebugPathWalker.*` and the
-`SpawnPathWalker` command; keep `FHexPathfinder` and its tests.
+Watch a real round. Record the crossing time from the enemy's own log against the 3.5 s from
+Checkpoint 1, and how each wave enters against the spawn timer (one lump, or a stream with an
+opening, a middle and a tail). Tune the delay range on the Spawn Hex Config and wave sizes in
+`DT_Rounds`. Then delete `Debug/DebugPathWalker.*` and the `SpawnPathWalker` command; keep
+`FHexPathfinder` and its tests.
 
-**Expected, not a bug:** a full row of champions stops the wave forever here, because nothing
-fights yet. Test waves with a gap. Task 3.2 removes this.
+**Expected, not a bug:** since routing ignores units (1.2b), any champion on an enemy's route
+stops it here, and the enemies behind queue up, because nothing fights yet. Test on an empty board
+or with champions out of the lanes. Task 3.2 removes this.
 
-**Done when:** crossing time and the `SpawnInterval` verdict are written into this task as a
+**Done when:** crossing time and the spawn-pacing verdict are written into this task as a
 result, as in Checkpoint 1's 7.1, and the walker is gone.
 
 ### 1.8 Walk animation (`Units/`, `Data/`)
@@ -368,15 +441,15 @@ A real HP bar is UI and waits. Also `SetUntargetable <q> <r> <0|1>` for 3.5.
 
 **Done when:** damage, persistence across a wave, and star scaling are all readable on screen.
 
-### 2.7 Paid heal (`Economy/`, `Input/`)
+### 2.7 Prep heal (`Abilities/`, `Waves/`)
 **[C++]**
-`EconomyConfig` gains `HealStepFraction` (0.2) and `HealCostPerStep` (1), placeholders (D9).
-`UShopSystem::Heal(Unit)` beside `Sell`, since both are gold-for-unit transactions: prep only,
-refuses at full HP or without gold, applies an instant heal effect of one step. `BoardPlayerController`
-binds `H` to the carried unit, else the unit under the cursor (the pickup trace already finds it).
-The damaged-sell rule is **not** built (D10).
+Replaces the withdrawn paid heal (D9). A heal-to-full GameplayEffect (sets `Health` to `MaxHealth`;
+instant). `URoundManager` applies it to every living board champion on entering Prep (D17). Dead
+champions were already removed (2.2) and are not restored. Nothing costs gold; there is no `H`
+key and no heal UI.
 
-**Done when:** a damaged champion heals 20% per press for 1 gold, and it refuses in Combat.
+**Done when:** a champion damaged in a round starts the next prep at full HP, a champion that died
+stays gone, and a champion damaged in wave 1 is still damaged in wave 2.
 
 ### 2.8 Champion stats
 **[Editor]**
@@ -411,7 +484,8 @@ hex to a candidate, from the existing search). Scan every tick while unlocked.
 
 **Done when:** headless tests show (1) in range with every attack hex occupied is *not*
 acquirable, (2) the enemy's own hex counts as free, (3) "nearest" follows path length and can
-differ from hex distance, using a wall of units.
+differ from hex distance. Units no longer affect the search (D18) and there is no terrain yet, so
+(3) needs a non-walkable tile set up as a test-only stand-in for terrain.
 
 ### 3.2 Enemy decision loop (`Units/`, `Pathfinding/`)
 **[C++]**
@@ -422,22 +496,27 @@ On each arrival, target check first:
   (`ComputeDistanceField` already takes several sources), step to the lowest neighbour.
 - **No lock:** scan; if found, treat as above; otherwise the exit field, as in 1.2.
 
-A blocked step (1.2's failed claim) is a contested hex, handled in 3.3. Nothing is stored between
-arrivals.
+A blocked step depends on what holds the hex (D18):
+- **A champion** → it becomes the target (dropping any other lock) and the enemy attacks from where
+  it stands.
+- **Another enemy, while walking to the exit** → wait and re-decide next tick (the default).
+- **Another enemy, while heading for an attack hex** → a contested hex, handled in 3.3.
 
-**Done when:** enemies walking a lane stop at a blocker and stay; a full row of champions no
-longer stalls the wave forever (the wall is attacked instead).
+Nothing is stored between arrivals.
+
+**Done when:** an enemy whose route runs into a champion stops and fights it; enemies queued behind
+it wait; a full row of champions no longer stalls the wave forever (the wall is attacked instead).
 
 ### 3.3 Contested hexes
 **[C++]**
-The loser of a `TryOccupy` race drops its lock and re-scans on the same tick. Another free hex in
-range of the same champion means it re-acquires that champion. Only if none exists does it fall
-through to the exit. Dropping the lock is not walking away. Once per tick per enemy, so a
+The loser of a `TryOccupy` race **keeps its lock** and sidesteps: if another hex within range of
+the same target is free, it heads there; if none is, it **waits where it is** and re-checks next
+tick until one opens. It never falls back to exit-pathing. One re-decision per tick per enemy, so a
 pathological board cannot loop.
 
-**Done when:** a headless test with two enemies and one free attack hex shows exactly one
-succeeds and the other drops its lock; a stress test over many interleavings never leaves two
-units on a tile.
+**Done when:** a headless test with two enemies and one free attack hex shows exactly one takes
+it and the other keeps its lock and waits (then takes a second free hex if one opens); a stress
+test over many interleavings never leaves two units on a tile.
 
 ### 3.4 Enemy attacks
 **[C++]**
@@ -450,9 +529,10 @@ copies are handled.
 ### 3.5 Lock breaking, verified
 **[C++]**
 No new mechanism: this checks that 2.3's single drop path covers every case for enemies too.
-`SetUntargetable` (2.6) makes enemies locked on that champion drop and re-scan; a target whose
-last free attack hex gets filled makes the approaching enemy drop and fall back to the exit; a
-target killed by a shooter drops every enemy locked on it.
+`SetUntargetable` (2.6) makes enemies locked on that champion drop and re-scan; an enemy locked on
+one champion whose next step is another champion's hex switches to the blocker; a target killed by
+a shooter drops every enemy locked on it. (A target whose attack hexes all fill is *not* a lock
+break any more: the enemy waits, keeping its lock, 3.3.)
 
 **Done when:** each of those is observed in PIE and none needs a special case in the code.
 
@@ -506,26 +586,35 @@ ABP's notifies.
 
 ### 4.1 Full-loop smoke test
 **[Editor]**
-Buy, place, `StartWave`. Watch enemies stop at blockers and shooters kill them. See HP persist,
-heal a unit, see each kill's `+N` and confirm nothing is spendable until the wave ends, merge and sell in prep, start the next wave. Confirm no
-errors and that grid data stays consistent: no unit ever on two tiles, no orphaned occupant.
+Buy, place, `StartRound`. Watch enemies trickle in, stop at the champions in their way, and get
+killed by shooters, and each wave follow the last once it resolves. See HP persist across the waves
+of a round, living champions return to full HP at prep and a dead one stay gone, see each kill's
+`+N` and confirm nothing is spendable until the round ends, merge and sell in prep, start the next
+round.
+Confirm no errors and that grid data stays consistent: no unit ever on two tiles, no orphaned
+occupant.
 
-**Done when:** three waves run back to back with no errors.
+**Done when:** three rounds run back to back with no errors.
 
 ### 4.2 Playtest questions, answered in writing
 **[Editor + C++]**
 Record the answers here, as Checkpoint 1's 7.1 recorded crossing time. These are the questions
 `DESIGN.md` §8 says only play can answer:
 
-- **Does one cheap blocker trivialize a wave?** And does a full-row wall? Lower `UnitCap` toward 6
-  and see.
-- **Crossing time against `SpawnInterval`:** lump, or stream?
+- **Does one cheap blocker trivialize a wave?** It now holds everything queued behind the enemy it
+  fights. And does a full-row wall? Lower `UnitCap` toward 6 and see.
+- **Crossing time against the spawn timer:** does a wave read as a stream with an opening, a middle
+  and a tail, or as a lump? What delay range and wave size feel right?
+- **Do queues look bad?** Enemies waiting behind enemies while an equally short free step exists
+  (the D18 fallback is the first fix).
 - **Does the cap change what you buy and place?**
-- **Does persistent damage plus a 1-gold heal feel like an economy, or a chore?**
+- **Do rounds have a shape?** Does damage carried across three waves make wave 3 feel harder, and
+  does the free prep heal plus permanent death give rounds real stakes?
 - **Do leaks happen at all** against a competent board (informs whether a cost is needed)?
 - **How hard does forfeited kill gold punish a leak on its own?** It is already a punishment. Does
   the run need a further chosen leak cost at all, or is the spiral already fast enough?
-- **Does the wave ever stall** (enemies clogging the spawn hexes)?
+- **Does a wave ever stall** (enemies clogging the spawn hexes, so the wave never finishes
+  entering and the round never advances)?
 
 **Done when:** each has a written answer, and the next plan can start from them.
 
@@ -535,25 +624,32 @@ Record the answers here, as Checkpoint 1's 7.1 recorded crossing time. These are
 
 - [ ] Enemies spawn on configured hexes, walk one hex at a time with no stored path, and exit
 - [ ] `TryOccupy` is atomic; no test or PIE run ever puts two units on one tile
-- [ ] A wave resolves when the roster is spawned and no enemy is alive
-- [ ] Leaks are counted per wave and in total, with no cost and nothing reading the counter
-- [ ] Shop, bench, sell, heal and drag are prep-only; `StartWave` refuses while carrying
+- [ ] Route planning ignores units; `OccupiedTileCost` is gone; occupancy is enforced by the step
+- [ ] A wave trickles in on one randomized timer from random free spawn hexes, with spawn windows
+      gated on progress (dead or exited); a missed Early entry becomes Any
+- [ ] A wave resolves when its roster is spawned and none of it is alive; the next wave starts only
+      then, and the round ends after its last wave. No prep timer, no gap, no stuck-wave timer
+- [ ] `RoundManager` owns phase and round flow; `WaveManager` owns the current wave
+- [ ] Leaks are counted per round and in total, with no cost and nothing reading the counter
+- [ ] Shop, bench, sell and drag are prep-only; `StartRound` refuses while carrying
 - [ ] Every board unit has an ability system component; attributes come from data assets
 - [ ] Targeting is not routed through GAS; `TargetingComponent` selects and passes data
 - [ ] Damage, death, kill gold and pool return all work through one path
 - [ ] Kill gold is the only income: granted on death, `+N` shown at the gold counter, unspendable
-      until the wave ends; no flat per-wave income exists
-- [ ] HP persists across waves; no path destroys and recreates a unit
+      until the round ends; no flat per-wave income exists
+- [ ] HP persists across the waves of a round; living champions heal to full on entering Prep; dead
+      champions stay dead; no path destroys and recreates a unit
 - [ ] Star-up scales health and damage by configured factors; attack speed and range stay flat
 - [ ] Enemy acquisition needs both conditions, filtered before path-length ranking
-- [ ] Lock breaks through one mechanism (dies, untargetable, leaves range, loses attack hex)
-- [ ] Contested hexes resolve by re-check; the loser re-scans the same tick
+- [ ] An enemy whose next step is a champion adopts it as target; one blocked by an enemy waits
+- [ ] Lock breaks through one mechanism (dies, untargetable, leaves range, blocking champion)
+- [ ] Contested hexes resolve by re-check; the loser sidesteps or waits, keeping its lock
 - [ ] Unit cap enforced for bench-to-empty only; preview shows invalid at the cap
-- [ ] Paid heal works and refuses in Combat, at full HP, or without gold
+- [ ] No paid heal and no damaged-sell rule exist
 - [ ] Enemies play a walk loop, and attacks and deaths play their clips, with no new or edited
       Animation Blueprint and the Paragon folders untouched
 - [ ] `ADebugPathWalker` and `SpawnPathWalker` removed
-- [ ] Crossing time and `SpawnInterval` verdict written down
+- [ ] Crossing time and spawn-pacing verdict written down
 - [ ] Playtest questions in 4.2 answered in writing
 - [ ] No mana, armor, cast ability, terrain, or chosen leak cost anywhere
 
@@ -563,9 +659,13 @@ Record the answers here, as Checkpoint 1's 7.1 recorded crossing time. These are
 
 Assassins, the leap, mana, armor, and any cast ability (the next checkpoint's first ability).
 Terrain, trees, `TerrainPieceBase`, `PlacementValidator`, seal prevention. Trait thresholds and
-effects. The damaged-sell rule and any change to sell value. A chosen leak cost (forfeited kill gold, D3, is already one and needs no code). The checkmate lose
-condition (a run with no units will simply stall). Scoutable wave display. The endless scaling
-formula for waves. HP bars, damage numbers, world-space popups and other UI (the HUD `+N` gold popup, 2.9, is the one exception); a Ready button; a real heal UI. Interest and streaks. Ability animations (with
+effects. Any change to sell value. A chosen leak cost (forfeited kill gold, D3, is already one and
+needs no code). The checkmate lose condition (a run with no units will simply stall). Scoutable
+round display. The endless scaling formula for rounds. A prep timer, a gap between waves, a
+stuck-wave timer or safety net (the per-wave spawn timer, D14, is the only timer). A per-wave
+spawn-delay override. The "equally short alternative step" for queued enemies, until 4.2 asks for
+it. Taunts and interrupts. HP bars, damage numbers, world-space popups and other UI (the HUD `+N`
+gold popup, 2.9, is the one exception); a Start button. Interest and streaks. Ability animations (with
 mana), animation notifies, and any new or edited Animation Blueprint, including driving the stock
 ABPs' `Speed` and `IsAccelerating` from C++. Projectiles, windup, line-of-fire
 blocking. A ranged enemy archetype, `TargetableInterface`, `CombatResolver`. Augments, items,
@@ -586,14 +686,14 @@ Several of these are one small step from something in this plan. That is why the
   adjusting at this zoom.
 - **Do not "Save All" after an ABP inspection.** Reading ABP graphs through the MCP marked all four
   ABPs dirty in memory; nothing was written.
-- **Phase 1 stalls at a full wall** until Phase 3 lands (1.7).
+- **Phase 1 stalls at any champion on a route** until Phase 3 lands (1.7).
+- **Enemies queue behind each other** by design; whether the queues look bad is a 4.2 question.
 - **Enemies shoot through trees that don't exist yet.** Range is hex distance by design.
 - **A blocker wall may be too strong.** That is a 4.2 question, not a bug.
-- **Sell-and-rebuy launders damage** (D10).
 - **A leaking enemy drops no gold.** That is a real punishment, already in place and needing no
   code, and any leak cost chosen later stacks on top of it. Size that cost knowing leaks already
   hurt. Nothing else reads the counter.
-- **Phase 1 waves award no gold** (kills arrive in 2.2). Fine: the player spends part of
+- **Phase 1 rounds award no gold** (kills arrive in 2.2). Fine: the player spends part of
   `StartingGold` in the first prep and keeps the rest.
 
 ---
