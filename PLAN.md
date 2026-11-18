@@ -62,7 +62,7 @@ assume them; change one here first if it needs revisiting.
 | D17 | Round-start heal | **`RoundManager` applies an instant heal-to-full GameplayEffect to every living board champion on entering Prep** (bench champions take no damage). It is an effect on surviving actors, never a reset or respawn. Dead champions stay dead (D4). Built in 2.7. |
 | D18 | Route planning and units | **The search ignores units entirely** (`CLAUDE.md` "Terrain redirects. Units stop."). `OccupiedTileCost` is removed from `FHexPathfinder`, `UBoardConfig` and `UHexGrid` (1.2b). An enemy whose next step is a champion adopts it as target (3.2); one whose next step holds another enemy waits (default; an equally short free alternative step is the first fix if queues look bad). |
 | D19 | Who owns round flow? | **Two world subsystems.** `URoundManager` (1.4a): phase (`Prep`/`Combat`), `StartRound`, round index, `DT_Rounds` lookup, leak counters, the prep heal. `UWaveManager` (1.4b): the current wave — roster, progress, spawn windows, spawn timer — and tells `RoundManager` when the wave resolves. |
-| D20 | Spawn windows | **Progress = resolved (dead or exited) ÷ roster size.** Early is open while progress < `EarlyWindowEnd` (placeholder 0.10), Late once progress ≥ `LateWindowStart` (placeholder 0.95), Any always. An Early entry still unspawned when its window closes becomes Any, so no entry is stranded. Thresholds live in `UTerraboundSettings` (project-wide wave rules, beside the star multipliers). Which eligible entry goes first is decided in 1.4b's plan. |
+| D20 | Spawn windows | **Progress = resolved (dead or exited) ÷ roster size.** Early is open while progress < `EarlyWindowEnd` (placeholder 0.10), Late once progress ≥ `LateWindowStart` (placeholder 0.95) **or once every non-Late enemy of the wave has resolved** (added in 1.4b: Late entries above 5% of a roster could otherwise hold progress below the threshold forever), Any always. An Early entry still unspawned when its window closes becomes Any, so no entry is stranded. Thresholds live in `UTerraboundSettings` (project-wide wave rules, beside the star multipliers). **Order (1.4b):** Early entries are first in line while their window is open; otherwise the next enemy is uniformly random among the pending enemies (an entry with Count 3 is three times as likely). An enemy counts as resolved when its actor is destroyed (exit today, death from Phase 2). |
 
 ---
 
@@ -320,6 +320,22 @@ starts only when the previous one is resolved; and the round resolves back to Pr
 cover progress counting exits, a missed Early entry becoming Any, and occupancy delaying (never
 advancing) a spawn. (Nothing earns gold yet: enemies only exit in this phase. Kills, and so income,
 arrive in 2.2.)
+
+**Done (2026-11-18; PIE-verified by the user with a minimal `DT_Rounds`: one round, two waves of 3
+`DA_Enemy_Grux`).** As built: `Waves/WaveManager.*` (a `UTickableWorldSubsystem`; `Tick` calls a
+public `AdvanceSpawning` for tests), `Min/MaxSpawnInterval` on `ASpawnHexConfig` (if Min > Max it
+logs and swaps them), `EarlyWindowEnd` / `LateWindowStart` in `UTerraboundSettings`,
+`RoundManager::StartWave` handing waves over, and the `WaveDump` command. The open questions are
+settled in D20: Early goes first, then a uniform random pick per pending enemy, with no seed.
+Approved additions:
+- **Late also opens once every non-Late enemy has resolved** (also written into `DESIGN.md`).
+- **An enemy counts as resolved when its actor is destroyed.**
+- **A roster entry with no enemy asset is logged and counted as resolved.**
+- **A missing `ASpawnHexConfig` warns and falls back to the default delay range.**
+
+Tests `Terrabound.Waves.WaveManager.Timer`, `.Occupancy`, `.Exits`, `.Early` and `.Late` are
+mutation-checked. `DT_Rounds` exists with that one round; 1.6 completes it.
+
 
 ### 1.5 Prep-phase gating (`Input/`, `Economy/`)
 **[C++]**

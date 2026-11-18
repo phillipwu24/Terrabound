@@ -520,7 +520,10 @@ allowed to spawn. Each entry carries a spawn window:
   **Any**: early means "front of the queue", not "now or never", so a wave can
   never strand an enemy that missed its window.
 - **Any** — whenever a spawn is due.
-- **Late** — only once progress is high (e.g. over ~95%).
+- **Late** — only once progress is high (e.g. over ~95%), or once every non-late
+  enemy of the wave is resolved. Without the second condition, a roster whose
+  late entries exceed the share above the threshold could never reach it, and the
+  wave would hang. This is the same "nothing is stranded" rule as for early entries.
 
 The thresholds are placeholders. The main use is **fast enemies spawning early or
 late**, when the board is clear enough for speed to mean something. Mid-wave, with
