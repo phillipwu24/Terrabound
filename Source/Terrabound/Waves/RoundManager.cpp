@@ -2,6 +2,7 @@
 
 #include "RoundManager.h"
 #include "WaveDefinition.h"
+#include "WaveManager.h"
 #include "../TerraboundSettings.h"
 #include "../Input/BoardPlayerController.h"
 #include "Engine/DataTable.h"
@@ -102,9 +103,19 @@ const FRoundRow* URoundManager::GetCurrentRoundRow() const
 
 void URoundManager::StartWave(int32 Index)
 {
+	// WaveIndex is set before the hand-off: an empty wave resolves inside StartWave, which calls
+	// back into NotifyWaveResolved.
 	WaveIndex = Index;
-	// WaveManager (1.4b) takes the wave from here and calls NotifyWaveResolved when it is done.
 	UE_LOG(LogTemp, Display, TEXT("RoundManager: round %d wave %d of %d starts."), RoundIndex + 1, WaveIndex + 1, GetWaveCount());
+
+	const FRoundRow* Row = GetCurrentRoundRow();
+	UWaveManager* Waves = GetWorld() ? GetWorld()->GetSubsystem<UWaveManager>() : nullptr;
+	if (!Row || !Row->Waves.IsValidIndex(Index) || !Waves)
+	{
+		UE_LOG(LogTemp, Error, TEXT("RoundManager: couldn't hand wave %d to WaveManager."), Index + 1);
+		return;
+	}
+	Waves->StartWave(Row->Waves[Index]);
 }
 
 void URoundManager::EndRound()

@@ -2,6 +2,7 @@
 
 #include "RoundManager.h"
 #include "WaveDefinition.h"
+#include "../Data/EnemyData.h"
 #include "../Grid/HexGridTestWorld.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -10,20 +11,28 @@
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
 
-// These drive NotifyWaveResolved by hand, standing in for WaveManager (1.4b). The rounds table is
-// built in code, so the tests don't depend on DT_Rounds. The test world has no player controller,
-// so the carried-unit refusal is checked in PIE instead.
+// These drive NotifyWaveResolved by hand, standing in for WaveManager's resolution. Each wave holds
+// one enemy so WaveManager doesn't resolve it on the spot; the test world has no spawn hexes and
+// never ticks, so nothing actually spawns. The rounds table is built in code, so the tests don't
+// depend on DT_Rounds. The test world has no player controller, so the carried-unit refusal is
+// checked in PIE instead.
 namespace RoundManagerTests
 {
-	/** A transient FRoundRow table with one row per entry of WaveCounts, each wave an empty roster. */
+	/** A transient FRoundRow table with one row per entry of WaveCounts, each wave one enemy. */
 	static UDataTable* MakeRoundsTable(const TArray<int32>& WaveCounts)
 	{
+		UEnemyData* Enemy = NewObject<UEnemyData>(GetTransientPackage());
+		FWaveRosterEntry Entry;
+		Entry.Enemy = Enemy;
+		FWaveDefinition Wave;
+		Wave.Roster.Add(Entry);
+
 		UDataTable* Table = NewObject<UDataTable>(GetTransientPackage());
 		Table->RowStruct = FRoundRow::StaticStruct();
 		for (int32 Index = 0; Index < WaveCounts.Num(); ++Index)
 		{
 			FRoundRow Row;
-			Row.Waves.SetNum(WaveCounts[Index]);
+			Row.Waves.Init(Wave, WaveCounts[Index]);
 			Table->AddRow(FName(*FString::Printf(TEXT("Round%d"), Index + 1)), Row);
 		}
 		return Table;

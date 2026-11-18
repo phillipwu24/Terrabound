@@ -44,6 +44,18 @@ public:
 	TSoftObjectPtr<UDataTable> RoundsTable;
 
 	/**
+	 * PLACEHOLDERS (D20). Wave progress is the share of the roster resolved (dead or exited). Early
+	 * entries are first in line while progress is below EarlyWindowEnd, and plain Any after. Late
+	 * entries wait until progress reaches LateWindowStart, or until every non-Late enemy of the wave
+	 * has resolved. Read by UWaveManager.
+	 */
+	UPROPERTY(EditAnywhere, config, Category = "Waves", meta = (ClampMin = "0", ClampMax = "1"))
+	float EarlyWindowEnd = 0.10f;
+
+	UPROPERTY(EditAnywhere, config, Category = "Waves", meta = (ClampMin = "0", ClampMax = "1"))
+	float LateWindowStart = 0.95f;
+
+	/**
 	 * BoardUnitBase's team tint hook (4.6) reads these three - one shared source rather than a
 	 * value repeated on every champion/enemy Blueprint. Must expose a Vector Parameter named
 	 * "TintColor" for ApplyTeamTint to drive.

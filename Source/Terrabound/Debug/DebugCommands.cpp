@@ -24,6 +24,7 @@
 #include "../Economy/ChampionMerger.h"
 #include "../Economy/ShopSystem.h"
 #include "../Waves/RoundManager.h"
+#include "../Waves/WaveManager.h"
 #include "DebugPathWalker.h"
 
 namespace
@@ -634,6 +635,22 @@ namespace
 			bCombat ? Rounds->GetWaveIndex() + 1 : 0, Rounds->GetWaveCount(),
 			Rounds->GetLeaksThisRound(), Rounds->GetLeaksTotal());
 	}
+
+	void DebugWaveDump(const TArray<FString>& Args, UWorld* World)
+	{
+		const UWaveManager* Waves = World ? World->GetSubsystem<UWaveManager>() : nullptr;
+		if (!Waves)
+		{
+			UE_LOG(LogTemp, Error, TEXT("WaveDump: no WaveManager subsystem for this world."));
+			return;
+		}
+		UE_LOG(LogTemp, Display, TEXT("WaveDump: %s, progress %.0f%% (%d of %d resolved), pending %d (early %d / any %d / late %d), alive %d, next spawn in %.2f s."),
+			Waves->IsWaveActive() ? TEXT("active") : TEXT("no wave"),
+			Waves->GetProgress() * 100.f, Waves->GetResolvedCount(), Waves->GetRosterSize(),
+			Waves->GetPendingCount(), Waves->GetPendingCountInWindow(ESpawnWindow::Early),
+			Waves->GetPendingCountInWindow(ESpawnWindow::Any), Waves->GetPendingCountInWindow(ESpawnWindow::Late),
+			Waves->GetAliveCount(), Waves->GetTimeUntilNextSpawn());
+	}
 }
 
 static FAutoConsoleCommand DebugPingCommand(
@@ -754,4 +771,10 @@ static FAutoConsoleCommandWithWorldAndArgs RoundDumpCommand(
 	TEXT("RoundDump"),
 	TEXT("Logs the round index, phase, wave and leak counters."),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugRoundDump)
+);
+
+static FAutoConsoleCommandWithWorldAndArgs WaveDumpCommand(
+	TEXT("WaveDump"),
+	TEXT("Logs the current wave: progress, pending enemies by spawn window, alive count and the spawn timer."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugWaveDump)
 );
