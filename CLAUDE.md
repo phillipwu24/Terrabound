@@ -24,8 +24,8 @@ waves. Endless run, chase a high score.
 placement, trait counter, pathfinder, plus star-up (3-copy merge) added afterwards.
 Checkpoint 2 is the current plan: enemies walking, then GAS and the first champion
 that shoots, then blockers and aggro. See `PLAN.md`. Phase 1 tasks 1.1 (`TryOccupy`) and
-1.2 (`EnemyData`, `EnemyBase` walking) and 1.3 (spawn hex config) are done; next is 1.2b
-(route planning ignores units). Design revised 2026-11-17 (stationary champions, units
+1.2 (`EnemyData`, `EnemyBase` walking), 1.3 (spawn hex config) and 1.2b (route planning
+ignores units) are done; next is 1.4a (`RoundManager`). Design revised 2026-11-17 (stationary champions, units
 stop, rounds of waves, round-long damage) — `DESIGN.md` header.
 
 ## Build command

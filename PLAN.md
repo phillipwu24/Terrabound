@@ -225,6 +225,15 @@ until it is next saved.
 **Done when:** the build is clean, every headless test passes, and nothing in `Source/` mentions
 `OccupiedTileCost`.
 
+**Done (2026-11-18).** As built: `TryGetEnterCost` returns `PathCost` only; the field, cache and
+getter are gone. `OneOccupiedHex`/`FullOccupiedRow` compare the field against the empty board's,
+and `OneOccupiedHex` also requires the step to pick the occupied hex at least once in 50. To get a
+deterministic hold, `LoneBlocker` gained a first pass from an edge tile whose *only* back-row
+neighbour is blocked: the enemy holds there and doesn't route round. The two-exit pass stays and
+passes either way. `SealedRow` now opens its gap on one of the enemy's own next steps, because a
+gap further along the row no longer pulls it sideways. Mutation-checked (restoring an occupant cost
+fails all three rewrites). `SealedRow` is a legality test and passes under both models.
+
 ### 1.3 Spawn hex config (`Waves/`)
 **[C++ + Editor]**
 **C++:** `ASpawnHexConfig`, a level-placed actor with `TArray<FHexCoord> SpawnHexes` (D12). The
