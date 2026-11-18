@@ -195,7 +195,7 @@ void ABoardPlayerController::ApplyHoverVisual(bool bHadPreviousHex, const FHexCo
 bool ABoardPlayerController::IsBoardLocked() const
 {
 	const URoundManager* Rounds = GetWorld() ? GetWorld()->GetSubsystem<URoundManager>() : nullptr;
-	return Rounds && Rounds->GetPhase() == ERoundPhase::Combat;
+	return Rounds && Rounds->IsBoardLocked();
 }
 
 bool ABoardPlayerController::CanDropOnHex(const FHexCoord& Coord) const

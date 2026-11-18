@@ -155,9 +155,12 @@ bool FWaveManagerGapTest::RunTest(const FString& Parameters)
 	Run(*Waves, TestWorld.GetWorld(), 2.9f, false);
 	TestEqual(TEXT("A later wave spawns nothing during the gap"), Waves->GetAliveCount(), 0);
 	Run(*Waves, TestWorld.GetWorld(), 0.2f, false);
-	TestEqual(TEXT("A later wave spawns once the gap has passed"), Waves->GetAliveCount(), 1);
-
-	GetEnemies(TestWorld.GetWorld())[0]->Destroy();
+	const TArray<AEnemyBase*> Enemies = GetEnemies(TestWorld.GetWorld());
+	if (!TestEqual(TEXT("A later wave spawns once the gap has passed"), Enemies.Num(), 1))
+	{
+		return false;
+	}
+	Enemies[0]->Destroy();
 	TestFalse(TEXT("That wave resolves"), Waves->IsWaveActive());
 
 	Waves->StartWave(Wave, true);

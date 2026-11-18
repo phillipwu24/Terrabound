@@ -34,9 +34,8 @@ public:
 
 	/**
 	 * PLACEHOLDER (D14), tuned in PLAN.md 1.7 against the 3.5 s crossing time. After each spawn the
-	 * next delay is drawn uniformly from [MinSpawnInterval, MaxSpawnInterval] seconds; the first
-	 * enemy of a wave comes at once. Read at the start of every wave. Min above Max is logged and
-	 * swapped.
+	 * next delay is drawn uniformly from [MinSpawnInterval, MaxSpawnInterval] seconds. Read at the
+	 * start of every wave. Min above Max is logged and swapped.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawn", meta = (ClampMin = "0", Units = "s"))
 	float MinSpawnInterval = 1.f;

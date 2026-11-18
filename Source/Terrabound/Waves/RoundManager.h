@@ -23,9 +23,9 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FOnRoundPhaseChanged, ERoundPhase /*NewPhase
  * leak counters. The current wave's roster, progress and spawn timer belong to WaveManager (1.4b),
  * which reports back through NotifyWaveResolved and NotifyEnemyExited.
  *
- * A round is Prep, then Combat across every wave of the round's DT_Rounds row back to back, then
- * Prep again (D0). Nothing here is a timer: Start is the player's, and each wave ends when
- * WaveManager says it has resolved.
+ * A round is Prep, then Combat across every wave of the round's DT_Rounds row in turn, then Prep
+ * again (D0). Nothing here is a timer: Start is the player's, each wave ends when WaveManager says it
+ * has resolved, and the gap before the next wave is WaveManager's spawn timer.
  */
 UCLASS()
 class TERRABOUND_API URoundManager : public UWorldSubsystem
@@ -44,8 +44,8 @@ public:
 	bool StartRound();
 
 	/**
-	 * WaveManager's hook: the current wave is resolved (every enemy dead or exited). Starts the
-	 * next wave at once, or ends the round after the last. Ignored outside Combat.
+	 * WaveManager's hook: the current wave is resolved (every enemy dead or exited). Hands over the
+	 * next wave, or ends the round after the last. Ignored outside Combat.
 	 */
 	void NotifyWaveResolved();
 
@@ -57,6 +57,10 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Round")
 	ERoundPhase GetPhase() const { return Phase; }
+
+	/** True in Combat: no champion is placed on, moved on, sold from or merged on the board (D1). */
+	UFUNCTION(BlueprintPure, Category = "Round")
+	bool IsBoardLocked() const { return Phase == ERoundPhase::Combat; }
 
 	/** 0-based; logs show it as "Round N" with N = index + 1. Advances when a round ends. */
 	UFUNCTION(BlueprintPure, Category = "Round")

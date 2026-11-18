@@ -223,7 +223,7 @@ bool FChampionMergerCombatTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Back in Prep"), Rounds->GetPhase() == ERoundPhase::Prep);
 	TestEqual(TEXT("The board copy survives as a 2-star"), BoardCopy->GetStarLevel(), 2);
 	TestTrue(TEXT("It keeps its hex"), Grid->GetTile(BoardHex)->Occupant.Get() == BoardCopy);
-	TestEqual(TEXT("The two bench copies were consumed"), Bench->FindSlotIndex(BenchCopy) == INDEX_NONE && Bench->FindSlotIndex(Bought) == INDEX_NONE, true);
+	TestTrue(TEXT("The two bench copies were consumed"), Bench->FindSlotIndex(BenchCopy) == INDEX_NONE && Bench->FindSlotIndex(Bought) == INDEX_NONE);
 
 	return true;
 }

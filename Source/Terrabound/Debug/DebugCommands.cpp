@@ -536,7 +536,7 @@ namespace
 
 		// Board champions can't be sold mid-round (PLAN.md D1); the bench sell commands still work.
 		const URoundManager* Rounds = World->GetSubsystem<URoundManager>();
-		if (Rounds && Rounds->GetPhase() == ERoundPhase::Combat)
+		if (Rounds && Rounds->IsBoardLocked())
 		{
 			UE_LOG(LogTemp, Warning, TEXT("DebugSellHex: refused - the board is locked during combat."));
 			return;
