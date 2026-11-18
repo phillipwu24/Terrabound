@@ -61,7 +61,7 @@ void URoundManager::NotifyWaveResolved()
 	UE_LOG(LogTemp, Display, TEXT("RoundManager: round %d wave %d resolved."), RoundIndex + 1, WaveIndex + 1);
 	if (WaveIndex + 1 < GetWaveCount())
 	{
-		// No gap between waves (D0).
+		// WaveManager holds the next wave's first spawn for the wave gap (D0); still Combat throughout.
 		StartWave(WaveIndex + 1);
 	}
 	else
@@ -115,7 +115,7 @@ void URoundManager::StartWave(int32 Index)
 		UE_LOG(LogTemp, Error, TEXT("RoundManager: couldn't hand wave %d to WaveManager."), Index + 1);
 		return;
 	}
-	Waves->StartWave(Row->Waves[Index]);
+	Waves->StartWave(Row->Waves[Index], Index == 0);
 }
 
 void URoundManager::EndRound()

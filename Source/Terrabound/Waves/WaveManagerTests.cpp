@@ -48,8 +48,8 @@ namespace WaveManagerTests
 		return Entry;
 	}
 
-	/** Flags SpawnHexes on the grid and places a config with a fixed spawn delay. Returns the WaveManager. */
-	static UWaveManager* SetUp(FAutomationTestBase& Test, const FScopedGridWorld& TestWorld, const TArray<FHexCoord>& SpawnHexes, float Interval)
+	/** Flags SpawnHexes on the grid and places a config with a fixed spawn delay and wave gap. Returns the WaveManager. */
+	static UWaveManager* SetUp(FAutomationTestBase& Test, const FScopedGridWorld& TestWorld, const TArray<FHexCoord>& SpawnHexes, float Interval, float WaveGap = 0.f)
 	{
 		UHexGrid* Grid = TestWorld.GetGrid();
 		UWaveManager* Waves = TestWorld.GetWorld()->GetSubsystem<UWaveManager>();
@@ -65,6 +65,7 @@ namespace WaveManagerTests
 		ASpawnHexConfig* Config = TestWorld.GetWorld()->SpawnActor<ASpawnHexConfig>();
 		Config->MinSpawnInterval = Interval;
 		Config->MaxSpawnInterval = Interval;
+		Config->WaveGapSeconds = WaveGap;
 		return Waves;
 	}
 
@@ -114,7 +115,7 @@ bool FWaveManagerTimerTest::RunTest(const FString& Parameters)
 
 	FWaveDefinition Wave;
 	Wave.Roster.Add(MakeEntry(MakeEnemyData(), 2, ESpawnWindow::Any));
-	Waves->StartWave(Wave);
+	Waves->StartWave(Wave, true);
 	TestEqual(TEXT("Both enemies start pending"), Waves->GetPendingCount(), 2);
 
 	Waves->AdvanceSpawning(Dt);
@@ -126,6 +127,42 @@ bool FWaveManagerTimerTest::RunTest(const FString& Parameters)
 	Run(*Waves, TestWorld.GetWorld(), 0.2f, false);
 	TestEqual(TEXT("The second enemy spawns once the delay has passed"), Waves->GetAliveCount(), 2);
 	TestEqual(TEXT("Nothing left pending"), Waves->GetPendingCount(), 0);
+
+	return true;
+}
+
+/**
+ * Wave gap (D0): a later wave of the round holds its first spawn for WaveGapSeconds; the round's
+ * first wave still spawns at once.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWaveManagerGapTest, "Terrabound.Waves.WaveManager.Gap", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FWaveManagerGapTest::RunTest(const FString& Parameters)
+{
+	using namespace WaveManagerTests;
+
+	FScopedGridWorld TestWorld;
+	UWaveManager* Waves = SetUp(*this, TestWorld, { AtOffset(3, 0) }, 1.f, 3.f);
+	if (!Waves)
+	{
+		return false;
+	}
+
+	FWaveDefinition Wave;
+	Wave.Roster.Add(MakeEntry(MakeEnemyData(), 1, ESpawnWindow::Any));
+
+	Waves->StartWave(Wave, false);
+	Run(*Waves, TestWorld.GetWorld(), 2.9f, false);
+	TestEqual(TEXT("A later wave spawns nothing during the gap"), Waves->GetAliveCount(), 0);
+	Run(*Waves, TestWorld.GetWorld(), 0.2f, false);
+	TestEqual(TEXT("A later wave spawns once the gap has passed"), Waves->GetAliveCount(), 1);
+
+	GetEnemies(TestWorld.GetWorld())[0]->Destroy();
+	TestFalse(TEXT("That wave resolves"), Waves->IsWaveActive());
+
+	Waves->StartWave(Wave, true);
+	Waves->AdvanceSpawning(Dt);
+	TestEqual(TEXT("The round's first wave spawns at once despite the gap"), Waves->GetAliveCount(), 1);
 
 	return true;
 }
@@ -154,7 +191,7 @@ bool FWaveManagerOccupancyTest::RunTest(const FString& Parameters)
 
 	FWaveDefinition Wave;
 	Wave.Roster.Add(MakeEntry(MakeEnemyData(), 1, ESpawnWindow::Any));
-	Waves->StartWave(Wave);
+	Waves->StartWave(Wave, true);
 
 	Run(*Waves, TestWorld.GetWorld(), 2.f, false);
 	TestEqual(TEXT("Nothing spawns onto a held spawn hex"), Waves->GetAliveCount(), 0);
@@ -190,7 +227,7 @@ bool FWaveManagerExitsTest::RunTest(const FString& Parameters)
 
 	FWaveDefinition Wave;
 	Wave.Roster.Add(MakeEntry(MakeEnemyData(), 2, ESpawnWindow::Any));
-	Waves->StartWave(Wave);
+	Waves->StartWave(Wave, true);
 
 	float ProgressAtFirstLeak = -1.f;
 	for (int32 Tick = 0; Tick < 900 && Waves->IsWaveActive(); ++Tick)
@@ -236,7 +273,7 @@ bool FWaveManagerEarlyTest::RunTest(const FString& Parameters)
 	bool bEarlyAlwaysFirst = true;
 	for (int32 Attempt = 0; Attempt < 10; ++Attempt)
 	{
-		Waves->StartWave(Mixed);
+		Waves->StartWave(Mixed, true);
 		Waves->AdvanceSpawning(Dt);
 		const TArray<AEnemyBase*> Enemies = GetEnemies(TestWorld.GetWorld());
 		if (!TestEqual(TEXT("One enemy spawned"), Enemies.Num(), 1))
@@ -251,7 +288,7 @@ bool FWaveManagerEarlyTest::RunTest(const FString& Parameters)
 	// Missed window: two Early; once the first resolves, progress is past the window.
 	FWaveDefinition AllEarly;
 	AllEarly.Roster.Add(MakeEntry(EarlyData, 2, ESpawnWindow::Early));
-	Waves->StartWave(AllEarly);
+	Waves->StartWave(AllEarly, true);
 	Waves->AdvanceSpawning(Dt);
 	TArray<AEnemyBase*> Enemies = GetEnemies(TestWorld.GetWorld());
 	if (!TestEqual(TEXT("The first Early enemy spawns"), Enemies.Num(), 1))
@@ -295,7 +332,7 @@ bool FWaveManagerLateTest::RunTest(const FString& Parameters)
 	FWaveDefinition Wave;
 	Wave.Roster.Add(MakeEntry(AnyData, 1, ESpawnWindow::Any));
 	Wave.Roster.Add(MakeEntry(LateData, 1, ESpawnWindow::Late));
-	Waves->StartWave(Wave);
+	Waves->StartWave(Wave, true);
 
 	Run(*Waves, TestWorld.GetWorld(), 1.f, false);
 	TArray<AEnemyBase*> Enemies = GetEnemies(TestWorld.GetWorld());

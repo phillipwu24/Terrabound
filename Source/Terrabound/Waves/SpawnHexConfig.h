@@ -12,7 +12,8 @@
  * that level's spawn hexes on the placed instance. At BeginPlay it asks UHexGrid to flag each one,
  * and nothing reads the array afterwards - it is an input read once, not a mirror of tile state, so
  * the grid's bIsSpawn flags are the only live copy. It also holds the level's spawn delay range
- * (PLAN.md 1.4b, D14), which UWaveManager reads at the start of each wave and never writes back.
+ * (PLAN.md 1.4b, D14) and the gap between waves (D0), which UWaveManager reads at the start of
+ * each wave and never writes back.
  */
 UCLASS()
 class TERRABOUND_API ASpawnHexConfig : public AActor
@@ -42,6 +43,14 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawn", meta = (ClampMin = "0", Units = "s"))
 	float MaxSpawnInterval = 2.f;
+
+	/**
+	 * PLACEHOLDER (D0). Seconds between a wave resolving and the next wave's first spawn. The first
+	 * wave of a round still starts at once. The gap is still Combat: no input, healing or
+	 * repositioning. Read at the start of every wave.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawn", meta = (ClampMin = "0", Units = "s"))
+	float WaveGapSeconds = 3.f;
 
 	/**
 	 * Flags every SpawnHexes entry as a spawn tile on the grid. An off-board entry is logged and

@@ -160,8 +160,10 @@ as rows `BoardDepth - PlaceableRowCount` through `BoardDepth - 1`.
 - **Prep** is the only time the player can buy, sell, or reposition champions and
   terrain. Living champions heal to full at the start of prep.
 - **Waves** run back to back with no player input. The next wave starts spawning
-  only once every enemy of the current wave is dead or exited. No repositioning
-  and no healing between waves.
+  only once every enemy of the current wave is dead or exited, plus a short gap
+  (`WaveGapSeconds` on the level's spawn config, placeholder 3 s, counted on the
+  wave's spawn timer). The gap is still combat: no repositioning and no healing
+  between waves.
 - **A wave is a fixed roster.** Spawn timing and which spawn hex each enemy uses
   are not authored.
 - **Wave progress** = share of the roster resolved (dead **or exited**, 0–100%).

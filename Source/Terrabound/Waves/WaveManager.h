@@ -17,8 +17,9 @@ class UEnemyData;
  * timer (D14). URoundManager hands it each wave through StartWave; it reports leaks through
  * URoundManager::NotifyEnemyExited and the wave's end through URoundManager::NotifyWaveResolved.
  *
- * Spawning: the first enemy of a wave comes at once; after each spawn the next delay is drawn from
- * the level's ASpawnHexConfig range. Once the delay has elapsed, a spawn needs a free spawn hex
+ * Spawning: the first enemy of a round's first wave comes at once, and of every later wave after
+ * the level's wave gap (D0); after each spawn the next delay is drawn from the level's
+ * ASpawnHexConfig range. Once the delay has elapsed, a spawn needs a free spawn hex
  * (read from the grid's bIsSpawn flags) and an eligible roster entry. Missing either, the timer
  * stays elapsed and retries every tick, so occupancy only ever delays a spawn.
  *
@@ -35,10 +36,12 @@ class TERRABOUND_API UWaveManager : public UTickableWorldSubsystem
 
 public:
 	/**
-	 * Starts Wave, replacing any wave in progress. Reads the spawn delay range from the level's
-	 * ASpawnHexConfig. A wave with nothing to spawn resolves at once.
+	 * Starts Wave, replacing any wave in progress. Reads the spawn delay range and the wave gap from
+	 * the level's ASpawnHexConfig. The first wave of a round spawns its first enemy at once; any
+	 * later wave waits WaveGapSeconds first, on the same timer. A wave with nothing to spawn
+	 * resolves at once.
 	 */
-	void StartWave(const FWaveDefinition& Wave);
+	void StartWave(const FWaveDefinition& Wave, bool bFirstWaveOfRound);
 
 	/** Advances the spawn timer and spawns if due. Tick calls this; public so headless tests can drive it. */
 	void AdvanceSpawning(float DeltaSeconds);
@@ -89,7 +92,8 @@ private:
 		ESpawnWindow Window = ESpawnWindow::Any;
 	};
 
-	void ReadSpawnIntervals();
+	/** Reads the delay range and wave gap from the level's ASpawnHexConfig (or its defaults). */
+	void ReadSpawnConfig();
 
 	/** Index into Pending of the next enemy to spawn, or INDEX_NONE if none is eligible. */
 	int32 PickPendingIndex() const;
@@ -117,5 +121,6 @@ private:
 	float TimeUntilNextSpawn = 0.f;
 	float MinSpawnInterval = 0.f;
 	float MaxSpawnInterval = 0.f;
+	float WaveGapSeconds = 0.f;
 	bool bWaveActive = false;
 };

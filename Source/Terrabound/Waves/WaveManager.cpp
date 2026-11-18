@@ -11,7 +11,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 
-void UWaveManager::StartWave(const FWaveDefinition& Wave)
+void UWaveManager::StartWave(const FWaveDefinition& Wave, bool bFirstWaveOfRound)
 {
 	Pending.Reset();
 	Alive.Reset();
@@ -38,10 +38,12 @@ void UWaveManager::StartWave(const FWaveDefinition& Wave)
 		}
 	}
 
-	ReadSpawnIntervals();
-	TimeUntilNextSpawn = 0.f;	// The first enemy of a wave comes at once (D14).
+	ReadSpawnConfig();
+	// The round's first wave starts at once (D14); later waves wait out the gap on the same timer (D0).
+	TimeUntilNextSpawn = bFirstWaveOfRound ? 0.f : WaveGapSeconds;
 	bWaveActive = true;
-	UE_LOG(LogTemp, Display, TEXT("WaveManager: wave starts - %d enemies, delay %.2f-%.2f s."), RosterSize, MinSpawnInterval, MaxSpawnInterval);
+	UE_LOG(LogTemp, Display, TEXT("WaveManager: wave starts - %d enemies, first spawn in %.2f s, then every %.2f-%.2f s."),
+		RosterSize, TimeUntilNextSpawn, MinSpawnInterval, MaxSpawnInterval);
 
 	CheckResolved();
 }
@@ -87,7 +89,7 @@ int32 UWaveManager::GetPendingCountInWindow(ESpawnWindow Window) const
 	return Count;
 }
 
-void UWaveManager::ReadSpawnIntervals()
+void UWaveManager::ReadSpawnConfig()
 {
 	const ASpawnHexConfig* Config = nullptr;
 	if (UWorld* World = GetWorld())
@@ -97,10 +99,11 @@ void UWaveManager::ReadSpawnIntervals()
 	}
 	if (!Config)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("WaveManager: no SpawnHexConfig in the level - using its default spawn delay range."));
+		UE_LOG(LogTemp, Warning, TEXT("WaveManager: no SpawnHexConfig in the level - using its default spawn delay range and wave gap."));
 		Config = GetDefault<ASpawnHexConfig>();
 	}
 
+	WaveGapSeconds = Config->WaveGapSeconds;
 	MinSpawnInterval = Config->MinSpawnInterval;
 	MaxSpawnInterval = Config->MaxSpawnInterval;
 	if (MinSpawnInterval > MaxSpawnInterval)

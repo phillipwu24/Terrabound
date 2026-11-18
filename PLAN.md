@@ -42,7 +42,7 @@ assume them; change one here first if it needs revisiting.
 
 | # | Question | Decision |
 |---|---|---|
-| D0 | Rounds and waves (`DESIGN.md` §"Rounds and waves", §"Spawn pacing") | A **round** runs prep to prep and holds a fixed list of **waves**. Wave N+1 starts spawning the moment wave N is resolved (every enemy dead or exited); the round ends when its last wave resolves, and play returns to Prep. Combat lasts the whole round. **One timer only:** the per-wave spawn timer (D14). No prep timer, no gap between waves, no stuck-wave timer. |
+| D0 | Rounds and waves (`DESIGN.md` §"Rounds and waves", §"Spawn pacing") | A **round** runs prep to prep and holds a fixed list of **waves**. Wave N+1 starts spawning **`WaveGapSeconds` after** wave N is resolved (every enemy dead or exited); the round's first wave starts at once. The gap (placeholder **3 s**, on `ASpawnHexConfig`) was added 2026-11-18 at the user's request; it is still Combat, with no input, healing or repositioning. The round ends when its last wave resolves, and play returns to Prep. Combat lasts the whole round. **One timer only:** the per-wave spawn timer (D14), which also counts down the gap. No prep timer, no stuck-wave timer. |
 | D1 | Which actions are allowed mid-round? | **Prep only.** Buy, reroll, sell, drag and placement all lock during combat, which spans every wave of the round. A mid-round merge would destroy a fighting unit, and champions never move during a round. |
 | D2 | What starts a round? | **The player**, via a `StartRound` console command and key (the **Start** in `DESIGN.md`). No prep timer. A Start button is UI, which waits. |
 | D3 | How does the player earn gold? | **Kill gold only; no flat per-wave income** (the unused `BaseIncomePerWave` is removed). Each enemy carries a flat `GoldOnKill` on `EnemyData` (placeholder 1; a per-type value is the same field with another number). It is granted automatically the moment the enemy dies, and the HUD shows a `+N` at the gold counter. Gold can't be spent until the round ends (D1), so it builds up in combat and is spent in prep. `StartingGold` funds the first prep. Interest and streaks are separate systems, later. A leaking enemy drops no gold: that is an intended punishment for leaking, additional to any leak cost chosen later. |
@@ -267,7 +267,7 @@ the config's rule, not a grid invariant. `ApplySpawnHexes()` is public so tests 
   `{TSoftObjectPtr<UEnemyData>, Count, SpawnWindow}` (D13). `DT_Rounds` is registered in
   `UTerraboundSettings` like the pool tables. Rounds past the table repeat the last row.
 - **Flow:** `StartRound` hands wave 1 to `WaveManager`; each time `WaveManager` reports its wave
-  resolved, the next wave starts at once, with no gap. After the last wave, the round ends: back to
+  resolved, the next wave starts at once (a wave gap was added later, see D0). After the last wave, the round ends: back to
   Prep, `RoundIndex` up. The prep heal (D17) hooks in here in 2.7. No income is granted (D3).
 - **Leaks:** `OnEnemyExited` increments `LeaksThisRound` and `LeaksTotal`, logged per round and
   cumulatively. **No cost, no HP bar, nothing that reads the counter.**
@@ -669,7 +669,8 @@ Record the answers here, as Checkpoint 1's 7.1 recorded crossing time. These are
 - [ ] A wave trickles in on one randomized timer from random free spawn hexes, with spawn windows
       gated on progress (dead or exited); a missed Early entry becomes Any
 - [ ] A wave resolves when its roster is spawned and none of it is alive; the next wave starts only
-      then, and the round ends after its last wave. No prep timer, no gap, no stuck-wave timer
+      then (after the wave gap), and the round ends after its last wave. No prep timer, no
+      stuck-wave timer
 - [ ] `RoundManager` owns phase and round flow; `WaveManager` owns the current wave
 - [ ] Leaks are counted per round and in total, with no cost and nothing reading the counter
 - [ ] Shop, bench, sell and drag are prep-only; `StartRound` refuses while carrying
@@ -702,7 +703,7 @@ Assassins, the leap, mana, armor, and any cast ability (the next checkpoint's fi
 Terrain, trees, `TerrainPieceBase`, `PlacementValidator`, seal prevention. Trait thresholds and
 effects. Any change to sell value. A chosen leak cost (forfeited kill gold, D3, is already one and
 needs no code). The checkmate lose condition (a run with no units will simply stall). Scoutable
-round display. The endless scaling formula for rounds. A prep timer, a gap between waves, a
+round display. The endless scaling formula for rounds. A prep timer, a
 stuck-wave timer or safety net (the per-wave spawn timer, D14, is the only timer). A per-wave
 spawn-delay override. The "equally short alternative step" for queued enemies, until 4.2 asks for
 it. Taunts and interrupts. HP bars, damage numbers, world-space popups and other UI (the HUD `+N`
