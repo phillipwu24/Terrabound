@@ -38,6 +38,11 @@ public:
 	UPROPERTY(EditAnywhere, config, Category = "Economy")
 	TSoftObjectPtr<UDataTable> ChampionTierOddsTable;
 
+	// URoundManager (PLAN.md 1.4a) reads DT_Rounds through this: one FRoundRow per round, read in
+	// table order, the last row repeating for every round past the end.
+	UPROPERTY(EditAnywhere, config, Category = "Waves", meta = (RequiredAssetDataTags = "RowStructure=/Script/Terrabound.RoundRow"))
+	TSoftObjectPtr<UDataTable> RoundsTable;
+
 	/**
 	 * BoardUnitBase's team tint hook (4.6) reads these three - one shared source rather than a
 	 * value repeated on every champion/enemy Blueprint. Must expose a Vector Parameter named

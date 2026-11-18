@@ -23,6 +23,7 @@
 #include "../Economy/BenchVisualizer.h"
 #include "../Economy/ChampionMerger.h"
 #include "../Economy/ShopSystem.h"
+#include "../Waves/RoundManager.h"
 #include "DebugPathWalker.h"
 
 namespace
@@ -606,6 +607,33 @@ namespace
 		}
 		UE_LOG(LogTemp, Display, TEXT("DebugCoordOverlay: toggled on %d HexGridVisualizer actor(s)."), Count);
 	}
+
+	void DebugStartRound(const TArray<FString>& Args, UWorld* World)
+	{
+		URoundManager* Rounds = World ? World->GetSubsystem<URoundManager>() : nullptr;
+		if (!Rounds)
+		{
+			UE_LOG(LogTemp, Error, TEXT("StartRound: no RoundManager subsystem for this world."));
+			return;
+		}
+		// StartRound logs its own refusal reasons.
+		Rounds->StartRound();
+	}
+
+	void DebugRoundDump(const TArray<FString>& Args, UWorld* World)
+	{
+		const URoundManager* Rounds = World ? World->GetSubsystem<URoundManager>() : nullptr;
+		if (!Rounds)
+		{
+			UE_LOG(LogTemp, Error, TEXT("RoundDump: no RoundManager subsystem for this world."));
+			return;
+		}
+		const bool bCombat = Rounds->GetPhase() == ERoundPhase::Combat;
+		UE_LOG(LogTemp, Display, TEXT("RoundDump: round %d, phase %s, wave %d of %d, leaks %d this round / %d total."),
+			Rounds->GetRoundIndex() + 1, bCombat ? TEXT("Combat") : TEXT("Prep"),
+			bCombat ? Rounds->GetWaveIndex() + 1 : 0, Rounds->GetWaveCount(),
+			Rounds->GetLeaksThisRound(), Rounds->GetLeaksTotal());
+	}
 }
 
 static FAutoConsoleCommand DebugPingCommand(
@@ -714,4 +742,16 @@ static FAutoConsoleCommandWithWorldAndArgs DebugCoordOverlayCommand(
 	TEXT("DebugCoordOverlay"),
 	TEXT("Toggles the (q, r) coordinate text overlay on all HexGridVisualizer actors."),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugCoordOverlay)
+);
+
+static FAutoConsoleCommandWithWorldAndArgs StartRoundCommand(
+	TEXT("StartRound"),
+	TEXT("Starts the current round (Prep -> Combat). Refused in Combat, while carrying a unit, or with no DT_Rounds."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugStartRound)
+);
+
+static FAutoConsoleCommandWithWorldAndArgs RoundDumpCommand(
+	TEXT("RoundDump"),
+	TEXT("Logs the round index, phase, wave and leak counters."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugRoundDump)
 );
