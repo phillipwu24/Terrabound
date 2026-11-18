@@ -29,6 +29,10 @@ EHexTileVisualState AHexGridVisualizer::GetBaseVisualState(const FHexCoord& Coor
 {
 	const UHexGrid* Grid = GetWorld() ? GetWorld()->GetSubsystem<UHexGrid>() : nullptr;
 	const FHexTile* Tile = Grid ? Grid->GetTile(Coord) : nullptr;
+	if (Tile && Tile->bIsSpawn)
+	{
+		return EHexTileVisualState::Spawn;
+	}
 	return (Tile && Tile->bIsPlaceable) ? EHexTileVisualState::PlayerZone : EHexTileVisualState::EnemyZone;
 }
 
@@ -36,6 +40,17 @@ void AHexGridVisualizer::BeginPlay()
 {
 	Super::BeginPlay();
 	BuildTileInstances();
+
+	// ASpawnHexConfig may flag its hexes before or after this BeginPlay; listening covers "after".
+	if (UHexGrid* Grid = GetWorld() ? GetWorld()->GetSubsystem<UHexGrid>() : nullptr)
+	{
+		Grid->OnTileFlagsChanged.AddUObject(this, &AHexGridVisualizer::HandleTileFlagsChanged);
+	}
+}
+
+void AHexGridVisualizer::HandleTileFlagsChanged(const FHexCoord& Coord)
+{
+	SetTileVisualState(Coord, GetBaseVisualState(Coord));
 }
 
 void AHexGridVisualizer::Tick(float DeltaSeconds)

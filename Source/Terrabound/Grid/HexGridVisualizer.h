@@ -28,7 +28,10 @@ enum class EHexTileVisualState : uint8
 	// top of ValidPlacement/InvalidPlacement's board-wide preview. New values go at the end so the
 	// numeric contract above (already wired into M_HexTile's if-chain) never shifts.
 	ValidPlacementHovered,
-	InvalidPlacementHovered
+	InvalidPlacementHovered,
+
+	// Appended (PLAN.md 1.3): a spawn-flagged tile's resting state, returned by GetBaseVisualState.
+	Spawn
 };
 
 /**
@@ -52,9 +55,9 @@ public:
 	void SetTileVisualState(const FHexCoord& Coord, EHexTileVisualState State);
 
 	/**
-	 * Coord's resting state (PlayerZone/EnemyZone) with no hover/placement/occupancy overlay -
-	 * what a tile reverts to once a transient state like Hovered is no longer relevant. Defaults
-	 * to EnemyZone if Coord isn't a valid tile (matches BuildTileInstances' own fallback).
+	 * Coord's resting state (Spawn, else PlayerZone/EnemyZone) with no hover/placement/occupancy
+	 * overlay - what a tile reverts to once a transient state like Hovered is no longer relevant.
+	 * Defaults to EnemyZone if Coord isn't a valid tile (matches BuildTileInstances' own fallback).
 	 */
 	EHexTileVisualState GetBaseVisualState(const FHexCoord& Coord) const;
 
@@ -68,6 +71,9 @@ protected:
 private:
 	void BuildTileInstances();
 	void DrawCoordOverlay() const;
+
+	/** UHexGrid::OnTileFlagsChanged handler: repaints Coord with its (possibly new) base state. */
+	void HandleTileFlagsChanged(const FHexCoord& Coord);
 
 	// Its native Static Mesh field (assigned in the editor to SM_HexTile from task 2.1) is
 	// what BuildTileInstances reads — no separate wrapper property, so there's one place to

@@ -127,7 +127,11 @@ bool UHexGrid::SetSpawnFlag(const FHexCoord& Coord, bool bEnabled)
 	{
 		return false;
 	}
-	Tile->bIsSpawn = bEnabled;
+	if (Tile->bIsSpawn != bEnabled)
+	{
+		Tile->bIsSpawn = bEnabled;
+		OnTileFlagsChanged.Broadcast(Coord);
+	}
 	return true;
 }
 

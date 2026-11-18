@@ -1,0 +1,43 @@
+// Copyright Epic Games, Inc. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "GameFramework/Actor.h"
+#include "../Grid/HexCoordinates.h"
+#include "SpawnHexConfig.generated.h"
+
+/**
+ * Per-level spawn hex configuration (PLAN.md 1.3, D12). Placed once in a level; the designer lists
+ * that level's spawn hexes on the placed instance. At BeginPlay it asks UHexGrid to flag each one,
+ * and nothing reads the array afterwards - it is an input read once, not a mirror of tile state, so
+ * the grid's bIsSpawn flags are the only live copy. The wave's spawn delay range (D14) is added
+ * here in PLAN.md 1.4b, where UWaveManager first reads it.
+ */
+UCLASS()
+class TERRABOUND_API ASpawnHexConfig : public AActor
+{
+	GENERATED_BODY()
+
+public:
+	ASpawnHexConfig();
+
+	/**
+	 * This level's spawn hexes, as axial (q, r) - the DebugCoordOverlay command shows each hex's
+	 * value. Meant for the enemy side, usually the far edge (row 0). A player-zone entry is an
+	 * error: logged, and the hex is kept a normal player hex. BlueprintReadOnly, not ReadWrite: it
+	 * is read once at BeginPlay, so a later Blueprint write would silently do nothing.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Spawn")
+	TArray<FHexCoord> SpawnHexes;
+
+	/**
+	 * Flags every SpawnHexes entry as a spawn tile on the grid. An off-board entry is logged and
+	 * skipped; a player-zone entry is logged and has its spawn flag explicitly cleared. Called from
+	 * BeginPlay; public so headless tests (whose worlds never BeginPlay actors) can call it.
+	 */
+	void ApplySpawnHexes();
+
+protected:
+	virtual void BeginPlay() override;
+};

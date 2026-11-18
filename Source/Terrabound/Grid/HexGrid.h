@@ -9,6 +9,7 @@
 #include "HexGrid.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnBoardOccupancyChanged);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnTileFlagsChanged, const FHexCoord& /*Coord*/);
 
 /**
  * Owns the board's flat tile array — the only place tile state lives. Generates from
@@ -60,7 +61,9 @@ public:
 	/**
 	 * Sets whether Coord is a spawn tile. A function, not exposed state: FHexTile.bIsSpawn stays
 	 * non-UPROPERTY, so a level Blueprint asks the grid to flip the flag rather than holding a
-	 * copy of it. Returns false for an invalid coord.
+	 * copy of it. Returns false for an invalid coord. Fires OnTileFlagsChanged only when the flag
+	 * actually changes. Accepts any valid coord, player zone included: refusing a player-zone spawn
+	 * hex is ASpawnHexConfig's rule (PLAN.md D12), not a grid invariant.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Hex Grid")
 	bool SetSpawnFlag(const FHexCoord& Coord, bool bEnabled);
@@ -118,6 +121,13 @@ public:
 	 */
 	UPROPERTY(BlueprintAssignable, Category = "Hex Grid")
 	FOnBoardOccupancyChanged OnOccupancyChanged;
+
+	/**
+	 * Fires when a tile's static flags change (today only bIsSpawn, via SetSpawnFlag), carrying the
+	 * tile's coord. Native, not BlueprintAssignable: its one listener is AHexGridVisualizer, which
+	 * repaints that tile, so the spawn colour is right whichever actor's BeginPlay runs first.
+	 */
+	FOnTileFlagsChanged OnTileFlagsChanged;
 
 private:
 	void GenerateGrid();
