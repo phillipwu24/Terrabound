@@ -25,8 +25,9 @@ placement, trait counter, pathfinder, plus star-up (3-copy merge) added afterwar
 Checkpoint 2 is the current plan: enemies walking, then GAS and the first champion
 that shoots, then blockers and aggro. See `PLAN.md`. Phase 1 tasks 1.1 (`TryOccupy`) and
 1.2 (`EnemyData`, `EnemyBase` walking), 1.3 (spawn hex config), 1.2b (route planning
-ignores units), 1.4a (`RoundManager`) and 1.4b (`WaveManager`) are done; next is 1.5
-(prep-phase gating). Design revised 2026-11-17 (stationary champions, units
+ignores units), 1.4a (`RoundManager`), 1.4b (`WaveManager`, plus a wave gap) and 1.5
+(combat locks the board, not the bench) are done; next is 1.6 (enemy assets and
+`DT_Rounds`, editor work). Design revised 2026-11-17 (stationary champions, units
 stop, rounds of waves, round-long damage) — `DESIGN.md` header.
 
 ## Build command
@@ -157,8 +158,11 @@ as rows `BoardDepth - PlaceableRowCount` through `BoardDepth - 1`.
   is per-round data — each round's row lists its waves — not a constant. The round
   starts when the player presses **Start**. No prep timer. Say "round", not
   "level" (level = Unreal map).
-- **Prep** is the only time the player can buy, sell, or reposition champions and
-  terrain. Living champions heal to full at the start of prep.
+- **Prep** is the only time the player can change the board: place, move, swap or
+  sell board champions and terrain. Living champions heal to full at the start of
+  prep. During combat the bench stays open, as in TFT: reroll, buy onto the bench,
+  sell bench champions, drag bench to bench. Nothing reaches or leaves a hex, and
+  merges use bench copies only (`PLAN.md` D1).
 - **Waves** run back to back with no player input. The next wave starts spawning
   only once every enemy of the current wave is dead or exited, plus a short gap
   (`WaveGapSeconds` on the level's spawn config, placeholder 3 s, counted on the
@@ -289,9 +293,10 @@ fields start being read.
 - **Star-up:** `CopiesPerStarUp` copies of the same champion at the same star
   level merge into one a level higher, up to `MaxStarLevel` (both in
   `EconomyConfig`). `ChampionMerger` owns it — it touches both `Bench` and
-  `HexGrid`, which `ShopSystem` must not. It runs only when a copy is bought,
-  never on drag. The survivor is a board copy over a bench copy, upgraded in
-  place. A copy that completes a merge is consumed and never benched, so it is
+  `HexGrid`, which `ShopSystem` must not. It runs when a copy is bought, and
+  once on entering prep (`MergeAll`), never on drag. In combat it ignores board
+  copies (the board is locked), so a trio that needs one waits for that prep
+  pass. The survivor is a board copy over a bench copy, upgraded in place. A copy that completes a merge is consumed and never benched, so it is
   allowed onto a full bench. Buying is blocked while a unit is carried (a
   carried unit is on neither bench nor board). Selling a merged unit refunds and
   returns every copy it is worth. Star level is runtime state on `ChampionBase`;

@@ -669,8 +669,9 @@ level there, so 3-star is ×3.24 and ×2.25); the actual multipliers are tuning 
 read by the champion's initial GameplayEffect once GAS exists.
 
 Unresolved: the per-star multipliers, which wait on GAS. Whether a star-up heals
-the survivor no longer matters: a merge only happens on a buy, buying is prep-only,
-and every living champion is at full HP in prep. The decided rule — star-up keeps
+the survivor no longer matters: a mid-round merge uses only bench copies, which
+take no damage, and a merge involving the board waits for prep, when every living
+champion is at full HP. The decided rule — star-up keeps
 the HP fraction — stays as the neutral default.
 
 ### Damage, healing, and death
@@ -693,8 +694,9 @@ between-wave healing was a paid action. What changes:
 - Healers are combat pieces, not economy pieces.
 - Gold no longer has a healing sink, so "what absorbs gold late" loses a
   candidate (§4).
-- Selling a damaged unit launders nothing — selling is prep-only, and in prep
-  every living unit is already at full HP. The damaged-sell rule that the paid
+- Selling a damaged unit launders nothing. Board champions can only be sold in
+  prep, when every living unit is already at full HP, and bench champions, which
+  can be sold mid-round, take no damage. The damaged-sell rule that the paid
   heal needed is gone with it.
 
 ### Repositioning
@@ -703,14 +705,20 @@ between-wave healing was a paid action. What changes:
 terrain, board and bench. Board to bench, bench to board, and bench to bench are
 all free during prep. No repositioning during waves and none between waves.
 
+**The bench stays open during combat, as in TFT.** Mid-round the player can
+reroll, buy onto the bench, sell bench champions and rearrange the bench. The
+board is locked: no champion is placed, moved, swapped or sold, and a star-up that
+would need a board copy waits until the round ends, then completes with the board
+copy surviving in place. The shop keeps the round busy without touching the fight.
+
 ### Gold collection
 
 **Kill gold is the only income.** There is no flat per-wave or per-round payout:
 each enemy carries a gold value, and the moment it dies that gold
 **auto-collects** into the player's total. No mandatory clicking. The HUD shows a
 `+N` at the gold counter for each kill, so the player watches income arrive. Gold
-earned mid-round can't be spent until the round ends (shop and sell lock during
-combat), so it builds up and is spent in prep. Interest, streaks and anything like them are separate
+earned mid-round can be spent mid-round, on rerolls and bench buys; only the
+board waits for prep. Interest, streaks and anything like them are separate
 systems, not part of this. Rare and elite enemies drop a bounty the player has a
 few seconds to click for.
 

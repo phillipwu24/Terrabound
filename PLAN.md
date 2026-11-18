@@ -43,16 +43,16 @@ assume them; change one here first if it needs revisiting.
 | # | Question | Decision |
 |---|---|---|
 | D0 | Rounds and waves (`DESIGN.md` §"Rounds and waves", §"Spawn pacing") | A **round** runs prep to prep and holds a fixed list of **waves**. Wave N+1 starts spawning **`WaveGapSeconds` after** wave N is resolved (every enemy dead or exited); the round's first wave starts at once. The gap (placeholder **3 s**, on `ASpawnHexConfig`) was added 2026-11-18 at the user's request; it is still Combat, with no input, healing or repositioning. The round ends when its last wave resolves, and play returns to Prep. Combat lasts the whole round. **One timer only:** the per-wave spawn timer (D14), which also counts down the gap. No prep timer, no stuck-wave timer. |
-| D1 | Which actions are allowed mid-round? | **Prep only.** Buy, reroll, sell, drag and placement all lock during combat, which spans every wave of the round. A mid-round merge would destroy a fighting unit, and champions never move during a round. |
+| D1 | Which actions are allowed mid-round? | **The board locks, the bench doesn't (TFT; revised 2026-11-18, replacing "Prep only").** During combat, which spans every wave of the round and the gaps between them, the player can still reroll, buy onto the bench, sell bench champions, and drag bench ↔ bench. A board champion can't be lifted, so it can't be moved, swapped or sold, and nothing can be dropped onto a hex. Merges use bench copies only. A trio that needs a board copy waits for `ChampionMerger::MergeAll`, which `RoundManager` runs on entering Prep, with the board copy surviving in place. A mid-round merge never destroys a fighting unit, and champions never move during a round. |
 | D2 | What starts a round? | **The player**, via a `StartRound` console command and key (the **Start** in `DESIGN.md`). No prep timer. A Start button is UI, which waits. |
-| D3 | How does the player earn gold? | **Kill gold only; no flat per-wave income** (the unused `BaseIncomePerWave` is removed). Each enemy carries a flat `GoldOnKill` on `EnemyData` (placeholder 1; a per-type value is the same field with another number). It is granted automatically the moment the enemy dies, and the HUD shows a `+N` at the gold counter. Gold can't be spent until the round ends (D1), so it builds up in combat and is spent in prep. `StartingGold` funds the first prep. Interest and streaks are separate systems, later. A leaking enemy drops no gold: that is an intended punishment for leaking, additional to any leak cost chosen later. |
+| D3 | How does the player earn gold? | **Kill gold only; no flat per-wave income** (the unused `BaseIncomePerWave` is removed). Each enemy carries a flat `GoldOnKill` on `EnemyData` (placeholder 1; a per-type value is the same field with another number). It is granted automatically the moment the enemy dies, and the HUD shows a `+N` at the gold counter. Gold earned mid-round can be spent mid-round on rerolls and bench buys (D1). `StartingGold` funds the first prep. Interest and streaks are separate systems, later. A leaking enemy drops no gold: that is an intended punishment for leaking, additional to any leak cost chosen later. |
 | D4 | A champion dies: what happens to its pool copies? | **Return them to the pool, no refund.** Otherwise deaths shrink the pool for good and an endless run dries the shop up. A dead star-up returns every copy it is worth. |
 | D5 | How do champions pick targets? | **Nearest enemy in range by hex distance**; hold until it dies, becomes untargetable, or leaves range. No free-hex test, because champions don't move. Melee champions (range 1) use the same rule, so they lock too — the default `DESIGN.md` §4 leaves open; flag it if it reads wrong in play. Taunt and interrupt are future lock breaks through the same path; neither is built. |
 | D6 | Which attributes exist now? | **Health, MaxHealth, AttackDamage, AttackSpeed.** Mana and Armor arrive with the first cast ability, which is where they do something. |
 | D7 | What does an attack do? | **Instant damage on activation** in Phase 2 (3.8 adds the hit delay from D16), cooldown `1 / AttackSpeed`. No windup or projectile. |
-| D8 | Star-up and HP | **Star-up keeps the HP fraction** (max HP grows, current HP scales with it). Stat multipliers are placeholders: ×1.8 health and ×1.5 damage per level; attack speed and range stay flat (decided). Since merges happen only on a prep buy, after the prep heal (D17), the fraction is always 1 in practice; the rule stays as the neutral default. |
+| D8 | Star-up and HP | **Star-up keeps the HP fraction** (max HP grows, current HP scales with it). Stat multipliers are placeholders: ×1.8 health and ×1.5 damage per level; attack speed and range stay flat (decided). The fraction is always 1 in practice: a mid-combat merge uses only bench copies, which take no damage, and the board catch-up merge runs on entering Prep, after the prep heal (D17); the rule stays as the neutral default. |
 | D9 | Paid heal shape | **Withdrawn (2026-11-17): there is no paid heal.** Living champions heal to full for free at the start of prep (D17). |
-| D10 | Damaged-sell rule (`DESIGN.md` §4) | **Withdrawn (2026-11-17): moot.** Selling is prep-only and every living unit is at full HP in prep, so sell-and-rebuy launders nothing. |
+| D10 | Damaged-sell rule (`DESIGN.md` §4) | **Withdrawn (2026-11-17): moot.** A board champion can only be sold in prep, when every living unit is at full HP. Bench champions, which can be sold mid-round, take no damage. Either way, sell-and-rebuy launders nothing. |
 | D11 | Unit cap | **Flat config value**, placeholder **10**, marked unresolved, on `DA_BoardConfig`. It counts board champions only. A cap of 6 or less makes a full-row wall impossible, so tune it down during 4.2. The growth formula is deferred. |
 | D12 | Where do spawn hexes live? | **A level-placed C++ actor** holding the array, not a level Blueprint graph. The array is data on the placed instance and needs no graph. A player-zone entry is an error: logged, its spawn flag cleared, and the hex kept a normal player hex. |
 | D13 | Round data shape | **`DT_Rounds`**, one row per round. Each row holds its own list of waves (3 each for now; there is no separate waves-per-round number), and each wave a roster of `{EnemyData, Count, SpawnWindow}` with `SpawnWindow` one of Early / Any / Late. Rounds past the table repeat the last row. The endless scaling formula is out of scope. |
@@ -337,14 +337,27 @@ Tests `Terrabound.Waves.WaveManager.Timer`, `.Occupancy`, `.Exits`, `.Early` and
 mutation-checked. `DT_Rounds` exists with that one round; 1.6 completes it.
 
 
-### 1.5 Prep-phase gating (`Input/`, `Economy/`)
-**[C++]**
-While `RoundManager` is in `Combat`: `ShopSystem::CanBuy`, `Buy`, `Reroll` and `Sell` refuse; `BoardPlayerController`
-refuses pickup and drop (D1). `StartRound` refuses while carrying, so no drag is ever live when
-combat begins. Only *spending* locks: the gold counter keeps updating during Combat (D3).
+### 1.5 Combat locks the board, not the bench (`Input/`, `Economy/`, `Waves/`)
+**[C++]** — rewritten 2026-11-18 (D1 revised to TFT rules).
+While `RoundManager` is in `Combat`:
+- `BoardPlayerController` lifts only bench units, and refuses every drop onto a hex (the unit goes
+  back to its slot, and hexes preview as invalid).
+- `ChampionMerger` ignores board copies.
+- `DebugSellHex` refuses.
 
-**Done when:** in Combat the shop cards grey and no unit can be lifted; in Prep everything behaves
-as before.
+Shop, reroll, buying onto the bench and bench sells are untouched. On entering Prep, `RoundManager`
+calls `ChampionMerger::MergeAll` to complete trios held back by the lock. `StartRound` still refuses
+while carrying.
+
+**Done when:** in Combat, bench units can be bought, sold and moved between slots, but board units
+can't be lifted and nothing lands on a hex. A trio split across bench and board merges when the round
+ends, with the board copy surviving. In Prep everything behaves as before.
+
+**Done (2026-11-18; PIE-verified by the user).** As specified. The board-unit sell guard sits in `DebugSellHex`, not
+`ShopSystem::Sell`, because the debug command clears the hex before selling, so `Sell` can't tell
+the unit was on the board. Test `Terrabound.Economy.ChampionMerger.Combat` is mutation-checked. A
+unit carried when the round ends isn't counted by the catch-up merge; it merges on the next
+purchase (accepted).
 
 ### 1.6 Enemy assets and first waves
 **[Editor]**
@@ -673,7 +686,9 @@ Record the answers here, as Checkpoint 1's 7.1 recorded crossing time. These are
       stuck-wave timer
 - [ ] `RoundManager` owns phase and round flow; `WaveManager` owns the current wave
 - [ ] Leaks are counted per round and in total, with no cost and nothing reading the counter
-- [ ] Shop, bench, sell and drag are prep-only; `StartRound` refuses while carrying
+- [ ] In combat the board is locked (no lifting board units, no drops on hexes, no merges using
+      board copies) while shop, bench buys, bench sells and bench drags stay open; held-back merges
+      complete on entering prep; `StartRound` refuses while carrying
 - [ ] Every board unit has an ability system component; attributes come from data assets
 - [ ] Targeting is not routed through GAS; `TargetingComponent` selects and passes data
 - [ ] Damage, death, kill gold and pool return all work through one path
