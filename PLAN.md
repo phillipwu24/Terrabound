@@ -279,6 +279,22 @@ headless; the stub is removed by 1.4b.
 **Done when:** a headless test drives Prep → Combat → (waves) → Prep with `RoundIndex` advancing,
 and `StartRound` refuses in Combat and while carrying.
 
+**Done (2026-11-18; PIE-verified by the user).** As built: `Waves/WaveDefinition.h` (`ESpawnWindow`,
+`FWaveRosterEntry`, `FWaveDefinition`, `FRoundRow`; rows read in table order, names ignored),
+`Waves/RoundManager.*`, `RoundsTable` in `UTerraboundSettings` (the picker is filtered to `FRoundRow`
+tables), and the `StartRound` / `RoundDump` commands. Approved changes to the text above:
+- **No stub.** Waves wait for `NotifyWaveResolved()`, the hook 1.4b calls, and the tests call it by
+  hand. An immediate stub would have made Combat impossible to observe.
+- **1.4b wires the leaks.** `NotifyEnemyExited()` counts them, but `OnEnemyExited` is per enemy, so
+  `WaveManager` binds it on each enemy it spawns. Enemies from the debug `SpawnEnemy` command never
+  count.
+- **`OnPhaseChanged` is native.** `BlueprintAssignable` waits for a widget.
+- **The carried-unit refusal is checked in PIE**, because the test world has no player controller.
+- **The Start key (D2) is deferred to 1.7.** Console only for now.
+
+Tests `Terrabound.Waves.RoundManager.Flow`, `.Leaks` and `.Refusals` are mutation-checked. Each
+test world logs a "no RoundsTable" warning until 1.6 creates `DT_Rounds`.
+
 ### 1.4b `WaveManager` (`Waves/`)
 **[C++ + Editor]**
 **C++:** `UWaveManager : UWorldSubsystem`, owning the current wave (D19).
