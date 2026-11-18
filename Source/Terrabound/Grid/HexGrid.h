@@ -102,10 +102,6 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Hex Grid")
 	float GetHexRadius() const { return HexRadius; }
 
-	/** Flat extra path cost of an occupied tile, as read from BoardConfig at generation. Derived read. */
-	UFUNCTION(BlueprintPure, Category = "Hex Grid")
-	float GetOccupiedTileCost() const { return OccupiedTileCost; }
-
 	/**
 	 * Coordinates of every back-row tile - the highest row index, adjacent to the exit. These are
 	 * the sources the pathfinder seeds its virtual goal node from. Derived read, not new state.
@@ -141,5 +137,4 @@ private:
 	int32 BoardDepth = 0;
 	int32 PlaceableRowCount = 0;
 	float HexRadius = 0.f;
-	float OccupiedTileCost = 0.f;
 };

@@ -25,7 +25,6 @@ void UHexGrid::GenerateGrid()
 	BoardDepth = Config->BoardDepth;
 	PlaceableRowCount = Config->PlaceableRowCount;
 	HexRadius = Config->HexRadius;
-	OccupiedTileCost = Config->OccupiedTileCost;
 
 	Tiles.Empty(BoardWidth * BoardDepth);
 	const int32 EnemyRowCount = BoardDepth - PlaceableRowCount;

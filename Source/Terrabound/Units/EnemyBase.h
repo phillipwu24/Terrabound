@@ -20,8 +20,8 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FOnEnemyExited, AEnemyBase*);
  * Walks one hex at a time and stores no path (CLAUDE.md): on each arrival it asks FHexPathfinder
  * for the neighbour with the lowest path distance to the exit, then claims that hex with
  * UHexGrid::TryOccupy the moment the step begins, releasing the hex it left at the same moment. If
- * the claim fails it holds and re-decides next tick. The pathfinder prices an occupied hex; this
- * claim is where occupancy is actually enforced, so the enemy never enters one.
+ * the claim fails it holds and re-decides next tick. The pathfinder ignores units entirely; this
+ * claim is the only place a unit blocks, so the enemy never enters an occupied hex.
  *
  * GetCurrentCoord() is the hex this enemy has claimed, which mid-step is the hex it is walking
  * *into* - the grid and the coord agree at every moment, even while the actor is visually between

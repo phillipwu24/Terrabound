@@ -30,6 +30,24 @@ namespace HexPathfinderTests
 	{
 		return RowOf(Grid.GetBackRowCoords()[0]);
 	}
+
+	/** Every tile in Before has the same distance in After, and neither has extra tiles. */
+	static bool FieldsMatch(const TMap<FHexCoord, float>& Before, const TMap<FHexCoord, float>& After)
+	{
+		if (Before.Num() != After.Num())
+		{
+			return false;
+		}
+		for (const TPair<FHexCoord, float>& Entry : Before)
+		{
+			const float* Other = After.Find(Entry.Key);
+			if (!Other || !FMath::IsNearlyEqual(*Other, Entry.Value))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
 }
 
 /**
@@ -84,9 +102,11 @@ bool FHexPathfinderEmptyBoardTest::RunTest(const FString& Parameters)
 }
 
 /**
- * One occupied hex (PLAN.md 7.1): a gap exists, so the flat occupied cost makes the step avoid the
- * occupied hex without lengthening the route. Fifty attempts, because a cost that were ignored would
- * still pass any single one of them half the time.
+ * One occupied hex (PLAN.md 1.2b): units are invisible to route planning, so the distance field is
+ * identical with the unit and without it, and the step still picks the occupied hex as often as its
+ * equally short neighbour - refusing to enter is the caller's occupancy claim, not the search. Fifty
+ * attempts: a search that avoided the unit would never pick it, and a fair tie misses it fifty times
+ * in a row with odds of 2^-50.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHexPathfinderOneOccupiedHexTest, "Terrabound.Pathfinding.HexPathfinder.OneOccupiedHex", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
@@ -113,18 +133,13 @@ bool FHexPathfinderOneOccupiedHexTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	const TMap<FHexCoord, float> EmptyField = FHexPathfinder::ComputeDistanceField(*Grid, Grid->GetBackRowCoords());
 	Grid->SetOccupant(Blocked, TestWorld.GetWorld()->SpawnActor<ABoardUnitBase>());
-
-	const int32 BackRow = GetBackRow(*Grid);
 	const TMap<FHexCoord, float> Field = FHexPathfinder::ComputeDistanceField(*Grid, Grid->GetBackRowCoords());
 
-	const float* FromDistance = Field.Find(From);
-	if (!TestNotNull(TEXT("The start is reachable"), FromDistance))
-	{
-		return false;
-	}
-	TestEqual(TEXT("A gap exists, so the occupied hex adds nothing to the distance"), *FromDistance, static_cast<float>(BackRow - RowOf(From)));
+	TestTrue(TEXT("The distance field is unchanged by the occupant"), FieldsMatch(EmptyField, Field));
 
+	bool bPickedOccupied = false;
 	for (int32 Attempt = 0; Attempt < 50; ++Attempt)
 	{
 		const TOptional<FHexCoord> Next = FHexPathfinder::ChooseNextStep(*Grid, Field, From);
@@ -132,17 +147,18 @@ bool FHexPathfinderOneOccupiedHexTest::RunTest(const FString& Parameters)
 		{
 			return false;
 		}
-		TestFalse(TEXT("The step avoids the occupied hex"), Next.GetValue() == Blocked);
-		TestEqual(TEXT("The step still goes one row down"), RowOf(Next.GetValue()), RowOf(From) + 1);
+		TestEqual(TEXT("The step goes one row down"), RowOf(Next.GetValue()), RowOf(From) + 1);
+		bPickedOccupied |= Next.GetValue() == Blocked;
 	}
+	TestTrue(TEXT("The search does not avoid the occupied hex"), bPickedOccupied);
 
 	return true;
 }
 
 /**
- * Full occupied row (PLAN.md 7.1): with no gap, the search routes through the wall rather than
- * failing - the step enters the wall row, and the distance rises by exactly one OccupiedTileCost,
- * from directly above the wall or from the far edge.
+ * Full occupied row (PLAN.md 1.2b): a wall of units is not a seal - the field is identical to the
+ * empty board's, every tile stays reachable, and the step from above the wall still goes into it.
+ * Holding in front of the wall is the enemy's occupancy claim (EnemyBase.SealedRow).
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHexPathfinderFullOccupiedRowTest, "Terrabound.Pathfinding.HexPathfinder.FullOccupiedRow", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
@@ -164,6 +180,7 @@ bool FHexPathfinderFullOccupiedRowTest::RunTest(const FString& Parameters)
 
 	const int32 BackRow = GetBackRow(*Grid);
 	const int32 WallRow = BackRow - 2;
+	const TMap<FHexCoord, float> EmptyField = FHexPathfinder::ComputeDistanceField(*Grid, Grid->GetBackRowCoords());
 	for (const FHexCoord& Coord : Grid->GetAllTileCoords())
 	{
 		if (RowOf(Coord) == WallRow)
@@ -173,24 +190,10 @@ bool FHexPathfinderFullOccupiedRowTest::RunTest(const FString& Parameters)
 	}
 
 	const TMap<FHexCoord, float> Field = FHexPathfinder::ComputeDistanceField(*Grid, Grid->GetBackRowCoords());
-	const float OccupiedCost = Grid->GetOccupiedTileCost();
+	TestTrue(TEXT("The distance field is unchanged by a full row of units"), FieldsMatch(EmptyField, Field));
+	TestEqual(TEXT("Every tile is still reachable"), Field.Num(), Grid->GetTileCount());
 
 	const FHexCoord AboveWall = AtOffset(3, WallRow - 1);
-	const float* AboveWallDistance = Field.Find(AboveWall);
-	if (!TestNotNull(TEXT("A tile above a sealed wall is still reachable"), AboveWallDistance))
-	{
-		return false;
-	}
-	TestEqual(TEXT("Distance from above the wall gains one occupied cost"), *AboveWallDistance, static_cast<float>(BackRow - RowOf(AboveWall)) + OccupiedCost);
-
-	const FHexCoord FarEdge = AtOffset(3, 0);
-	const float* FarEdgeDistance = Field.Find(FarEdge);
-	if (!TestNotNull(TEXT("The far edge is still reachable"), FarEdgeDistance))
-	{
-		return false;
-	}
-	TestEqual(TEXT("Distance from the far edge gains one occupied cost"), *FarEdgeDistance, static_cast<float>(BackRow - RowOf(FarEdge)) + OccupiedCost);
-
 	const TOptional<FHexCoord> Next = FHexPathfinder::ChooseNextStep(*Grid, Field, AboveWall);
 	if (!TestTrue(TEXT("A next step exists even though the wall is sealed"), Next.IsSet()))
 	{

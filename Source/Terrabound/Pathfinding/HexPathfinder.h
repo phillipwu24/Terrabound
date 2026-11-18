@@ -13,10 +13,10 @@ class UHexGrid;
  * one step at a time - units store no path, so there is nothing to cache or invalidate. Stateless:
  * every function is static and reads only FHexTile data, never an actor.
  *
- * Cost model, per CLAUDE.md ("Terrain blocks pathing outright. Units block it at a flat cost."):
- * a tile with bIsWalkable == false cannot be entered; an occupied tile can, at its PathCost plus
- * one flat OccupiedTileCost that never looks at who the occupant is. The cost only steers route
- * choice - it does not let a unit stand on an occupied tile, which the caller's step enforces.
+ * Cost model, per CLAUDE.md ("Terrain redirects. Units stop."): a tile with bIsWalkable == false
+ * cannot be entered; every other tile costs its PathCost. Occupant is never read - units are
+ * invisible to route planning, so the field is the same however many units stand on the board.
+ * Units block only at the moment of stepping, through the caller's occupancy claim.
  */
 struct TERRABOUND_API FHexPathfinder
 {

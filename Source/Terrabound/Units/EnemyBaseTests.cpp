@@ -13,8 +13,8 @@
 #include "Engine/World.h"
 
 // The test world never ticks, so these drive AEnemyBase::AdvanceMovement directly on a fixed step. They
-// run against whatever DA_BoardConfig Project Settings points at (default 7x8, PathCost 1, occupied
-// cost 100) and derive every row from the back row rather than hardcoding depth.
+// run against whatever DA_BoardConfig Project Settings points at (default 7x8, PathCost 1) and derive
+// every row from the back row rather than hardcoding depth.
 namespace EnemyBaseTests
 {
 	constexpr float Dt = 1.f / 60.f;
@@ -46,6 +46,20 @@ namespace EnemyBaseTests
 		ABoardUnitBase* Blocker = World->SpawnActor<ABoardUnitBase>();
 		Grid.SetOccupant(Coord, Blocker);
 		return Blocker;
+	}
+
+	/** On-board neighbours of Coord that lie on BackRow. */
+	static TArray<FHexCoord> GetBackRowNeighbours(const UHexGrid& Grid, const FHexCoord& Coord, int32 BackRow)
+	{
+		TArray<FHexCoord> Result;
+		for (const FHexCoord& Neighbour : UHexCoordinateLibrary::GetNeighbours(Coord))
+		{
+			if (Grid.IsValidCoord(Neighbour) && RowOf(Neighbour) == BackRow)
+			{
+				Result.Add(Neighbour);
+			}
+		}
+		return Result;
 	}
 
 	/** How many tiles hold Unit. An enemy must hold exactly one at every moment once it has entered. */
@@ -116,8 +130,11 @@ bool FEnemyBaseEmptyBoardTest::RunTest(const FString& Parameters)
 }
 
 /**
- * A lone blocker in the enemy's lane: from one row above the back row there are two ways out. Block
- * either in turn and the enemy must take the other, without ever overwriting the blocker.
+ * A lone blocker (PLAN.md 1.2b). Units are invisible to route planning, so an enemy whose only
+ * shortest step is the blocker's hex holds in front of it instead of routing round, and moves once
+ * the hex clears. Where two steps are equally short, the random tie may pick the blocker's hex
+ * (refused, so the enemy holds and re-picks next tick) or the free one, so that pass asserts only
+ * that the enemy never enters the blocker's hex and leaves through the free one.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEnemyBaseLoneBlockerTest, "Terrabound.Units.EnemyBase.LoneBlocker", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
@@ -134,15 +151,63 @@ bool FEnemyBaseLoneBlockerTest::RunTest(const FString& Parameters)
 	}
 
 	const int32 BackRow = RowOf(Grid->GetBackRowCoords()[0]);
-	const FHexCoord Start = AtOffset(3, BackRow - 1);
-	TArray<FHexCoord> Exits;
-	for (const FHexCoord& Neighbour : UHexCoordinateLibrary::GetNeighbours(Start))
+
+	// Pass 1: an edge start with a single back-row neighbour, so the blocker's hex is the only
+	// shortest step. Routing round it (along the row, then down) would cost one step more.
+	TOptional<FHexCoord> EdgeStart;
+	for (const FHexCoord& Coord : Grid->GetAllTileCoords())
 	{
-		if (Grid->IsValidCoord(Neighbour) && RowOf(Neighbour) == BackRow)
+		if (RowOf(Coord) == BackRow - 1 && GetBackRowNeighbours(*Grid, Coord, BackRow).Num() == 1)
 		{
-			Exits.Add(Neighbour);
+			EdgeStart = Coord;
+			break;
 		}
 	}
+	if (!TestTrue(TEXT("Fixture: an edge tile above the back row has a single back-row neighbour"), EdgeStart.IsSet()))
+	{
+		return false;
+	}
+	{
+		const FHexCoord Blocked = GetBackRowNeighbours(*Grid, EdgeStart.GetValue(), BackRow)[0];
+		ABoardUnitBase* Blocker = SpawnBlocker(TestWorld.GetWorld(), *Grid, Blocked);
+
+		AEnemyBase* Enemy = SpawnEnemy(TestWorld.GetWorld());
+		int32 ExitCount = 0;
+		FHexCoord ExitCoord;
+		Enemy->OnEnemyExited.AddLambda([&](AEnemyBase* Exited)
+		{
+			++ExitCount;
+			ExitCoord = Exited->GetCurrentCoord();
+		});
+		if (!TestTrue(TEXT("Enemy enters the edge start tile"), Enemy->EnterBoard(EdgeStart.GetValue())))
+		{
+			return false;
+		}
+
+		bool bStayedPut = true;
+		for (int32 Tick = 0; Tick < 600; ++Tick)
+		{
+			Enemy->AdvanceMovement(Dt);
+			bStayedPut &= Enemy->GetCurrentCoord() == EdgeStart.GetValue();
+		}
+		TestTrue(TEXT("Enemy holds in front of the blocker instead of routing round it"), bStayedPut);
+		TestEqual(TEXT("Enemy does not exit while blocked"), ExitCount, 0);
+		TestTrue(TEXT("Blocker still holds its tile"), Grid->GetTile(Blocked)->Occupant.Get() == Blocker);
+
+		// Clear the blocker: occupancy only ever delays.
+		Grid->ClearOccupant(Blocked);
+		Blocker->Destroy();
+		for (int32 Tick = 0; Tick < 600 && ExitCount == 0; ++Tick)
+		{
+			Enemy->AdvanceMovement(Dt);
+		}
+		TestEqual(TEXT("Enemy exits once the hex clears"), ExitCount, 1);
+		TestTrue(TEXT("Enemy exits through the hex the blocker held"), ExitCoord == Blocked);
+	}
+
+	// Pass 2: a middle start with two equally short ways out. Block either in turn.
+	const FHexCoord Start = AtOffset(3, BackRow - 1);
+	const TArray<FHexCoord> Exits = GetBackRowNeighbours(*Grid, Start, BackRow);
 	if (!TestEqual(TEXT("Fixture: start has two back-row neighbours"), Exits.Num(), 2))
 	{
 		return false;
@@ -185,9 +250,10 @@ bool FEnemyBaseLoneBlockerTest::RunTest(const FString& Parameters)
 }
 
 /**
- * A wall with no gap: the search routes through it at a cost, but the step refuses to enter, so the
- * enemy walks up and holds. It never overwrites a wall unit and never holds two tiles. Opening a gap
- * lets it through - occupancy only ever delays.
+ * A wall with no gap (PLAN.md 1.2b): the search ignores the units, but the step refuses to enter, so
+ * the enemy walks up and holds in front of the row. It never overwrites a wall unit and never holds
+ * two tiles. Opening a gap on one of its own next steps lets it through - occupancy only ever delays.
+ * (A gap further along the row would not: units stop, they don't redirect.)
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEnemyBaseSealedRowTest, "Terrabound.Units.EnemyBase.SealedRow", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
@@ -246,8 +312,21 @@ bool FEnemyBaseSealedRowTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Enemy never exits through a sealed row"), ExitCount, 0);
 	TestEqual(TEXT("Enemy walked up to the wall and held"), RowOf(Enemy->GetCurrentCoord()), WallRow - 1);
 
-	// Open a gap: the delay ends and the enemy gets through.
-	Grid->ClearOccupant(WallCoords[WallCoords.Num() / 2]);
+	// Open a gap directly ahead of the enemy: the delay ends and it gets through.
+	TOptional<FHexCoord> Gap;
+	for (const FHexCoord& Neighbour : UHexCoordinateLibrary::GetNeighbours(Enemy->GetCurrentCoord()))
+	{
+		if (WallCoords.Contains(Neighbour))
+		{
+			Gap = Neighbour;
+			break;
+		}
+	}
+	if (!TestTrue(TEXT("Fixture: the enemy has a wall hex ahead of it"), Gap.IsSet()))
+	{
+		return false;
+	}
+	Grid->ClearOccupant(Gap.GetValue());
 	for (int32 Tick = 0; Tick < 1200 && ExitCount == 0; ++Tick)
 	{
 		Enemy->AdvanceMovement(Dt);

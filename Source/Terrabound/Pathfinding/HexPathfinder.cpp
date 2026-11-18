@@ -12,8 +12,8 @@ bool FHexPathfinder::TryGetEnterCost(const UHexGrid& Grid, const FHexCoord& Coor
 		return false;
 	}
 
-	// Flat: any occupant costs the same, whoever it is. Only whether the tile is occupied is read.
-	OutCost = Tile->PathCost + (Tile->Occupant.IsValid() ? Grid.GetOccupiedTileCost() : 0.f);
+	// Occupant is deliberately never read: units are invisible to route planning (CLAUDE.md).
+	OutCost = Tile->PathCost;
 	return true;
 }
 

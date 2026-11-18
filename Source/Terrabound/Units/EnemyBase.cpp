@@ -145,7 +145,7 @@ bool AEnemyBase::TryBeginNextStep(UHexGrid& Grid)
 		return false;
 	}
 
-	// The pathfinder prices an occupied hex; this claim is where occupancy is actually enforced. The
+	// The pathfinder ignores units; this claim is the only place a unit blocks the step. The
 	// claim and the release happen together, so the enemy holds exactly one tile at every moment.
 	if (!Grid.TryOccupy(Next.GetValue(), this))
 	{
