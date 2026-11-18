@@ -5,6 +5,7 @@
 #include "WaveManager.h"
 #include "../TerraboundSettings.h"
 #include "../Input/BoardPlayerController.h"
+#include "../Economy/ChampionMerger.h"
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
 
@@ -125,6 +126,13 @@ void URoundManager::EndRound()
 	WaveIndex = 0;
 	// The prep heal (D17) is applied here, on entering Prep, in PLAN.md 2.7.
 	SetPhase(ERoundPhase::Prep);
+
+	// After the phase change, so the merger sees an unlocked board: completes the trios held back
+	// during Combat because they needed a board copy (D1). A unit being carried isn't counted.
+	if (UChampionMerger* Merger = GetWorld() ? GetWorld()->GetSubsystem<UChampionMerger>() : nullptr)
+	{
+		Merger->MergeAll();
+	}
 }
 
 void URoundManager::SetPhase(ERoundPhase NewPhase)

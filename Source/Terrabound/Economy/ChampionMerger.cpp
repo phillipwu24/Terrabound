@@ -7,6 +7,7 @@
 #include "../Data/EconomyConfig.h"
 #include "../Data/ChampionData.h"
 #include "../Units/ChampionBase.h"
+#include "../Waves/RoundManager.h"
 
 void UChampionMerger::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -80,7 +81,13 @@ void UChampionMerger::GatherCandidates(AChampionBase* Pending, TArray<FMergeCand
 		}
 	};
 
-	if (const UHexGrid* Grid = GetWorld() ? GetWorld()->GetSubsystem<UHexGrid>() : nullptr)
+	// In Combat the board is locked (D1): board copies can't be upgraded or consumed, so they aren't
+	// candidates. MergeAll catches them up on entering Prep.
+	const URoundManager* Rounds = GetWorld() ? GetWorld()->GetSubsystem<URoundManager>() : nullptr;
+	const bool bBoardLocked = Rounds && Rounds->GetPhase() == ERoundPhase::Combat;
+
+	const UHexGrid* Grid = GetWorld() ? GetWorld()->GetSubsystem<UHexGrid>() : nullptr;
+	if (Grid && !bBoardLocked)
 	{
 		for (const FHexCoord& Coord : Grid->GetAllTileCoords())
 		{
@@ -183,4 +190,9 @@ bool UChampionMerger::TryMerge(AChampionBase* NewCopy)
 	}
 
 	return bPendingConsumed;
+}
+
+void UChampionMerger::MergeAll()
+{
+	TryMerge(nullptr);
 }

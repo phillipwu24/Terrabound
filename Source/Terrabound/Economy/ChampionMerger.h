@@ -30,8 +30,10 @@ struct FMergeCandidate
 
 /**
  * TFT-style star-up: CopiesPerStarUp copies of the same champion at the same star level merge into
- * one copy a level higher. Runs only when a copy arrives (ShopSystem::Buy), never on drag - moving
- * a unit doesn't change what the player owns.
+ * one copy a level higher. Runs when a copy arrives (ShopSystem::Buy) and once on entering Prep
+ * (MergeAll), never on drag - moving a unit doesn't change what the player owns. In Combat the
+ * board is locked (PLAN.md D1), so only bench copies take part; a trio that needs a board copy waits
+ * for the Prep pass, as in TFT.
  *
  * Owns the merge, not ShopSystem, because a merge touches both UBench and UHexGrid (clearing the
  * consumed copies' slots/tiles) and ShopSystem deliberately touches neither. The survivor is
@@ -59,7 +61,8 @@ public:
 
 	/**
 	 * True if a newly bought 1-star copy of Data would merge with what is already on the bench and
-	 * board. ShopSystem uses this to let a completing copy be bought onto a full bench.
+	 * board (bench only in Combat). ShopSystem uses this to let a completing copy be bought onto a
+	 * full bench.
 	 */
 	bool WouldCompleteMerge(const UChampionData* Data) const;
 
@@ -71,8 +74,14 @@ public:
 	 */
 	bool TryMerge(AChampionBase* NewCopy);
 
+	/**
+	 * Merges every trio on the bench and board, with no new copy. URoundManager calls it on entering
+	 * Prep, to complete merges held back during Combat because they needed a board copy.
+	 */
+	void MergeAll();
+
 private:
-	/** Fills OutCandidates and a parallel OutUnits array (same indices) from bench, board, Pending. */
+	/** Fills OutCandidates and a parallel OutUnits array (same indices) from bench, board (not in Combat), Pending. */
 	void GatherCandidates(AChampionBase* Pending, TArray<FMergeCandidate>& OutCandidates, TArray<AChampionBase*>& OutUnits) const;
 
 	UPROPERTY()

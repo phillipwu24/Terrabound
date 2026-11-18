@@ -7,6 +7,7 @@
 #include "../Economy/BenchVisualizer.h"
 #include "../Economy/ShopSystem.h"
 #include "../Units/BoardUnitBase.h"
+#include "../Waves/RoundManager.h"
 #include "Engine/Engine.h"
 #include "EngineUtils.h"
 #include "Blueprint/UserWidget.h"
@@ -191,18 +192,26 @@ void ABoardPlayerController::ApplyHoverVisual(bool bHadPreviousHex, const FHexCo
 	}
 }
 
-EHexTileVisualState ABoardPlayerController::GetPlacementVisualState(const FHexCoord& Coord) const
+bool ABoardPlayerController::IsBoardLocked() const
+{
+	const URoundManager* Rounds = GetWorld() ? GetWorld()->GetSubsystem<URoundManager>() : nullptr;
+	return Rounds && Rounds->GetPhase() == ERoundPhase::Combat;
+}
+
+bool ABoardPlayerController::CanDropOnHex(const FHexCoord& Coord) const
 {
 	const UHexGrid* Grid = HexGrid.Get();
-	const bool bCanPlace = Grid && Grid->CanPlaceOrSwapAt(Coord);
-	return bCanPlace ? EHexTileVisualState::ValidPlacement : EHexTileVisualState::InvalidPlacement;
+	return !IsBoardLocked() && Grid && Grid->CanPlaceOrSwapAt(Coord);
+}
+
+EHexTileVisualState ABoardPlayerController::GetPlacementVisualState(const FHexCoord& Coord) const
+{
+	return CanDropOnHex(Coord) ? EHexTileVisualState::ValidPlacement : EHexTileVisualState::InvalidPlacement;
 }
 
 EHexTileVisualState ABoardPlayerController::GetHoveredPlacementVisualState(const FHexCoord& Coord) const
 {
-	const UHexGrid* Grid = HexGrid.Get();
-	const bool bCanPlace = Grid && Grid->CanPlaceOrSwapAt(Coord);
-	return bCanPlace ? EHexTileVisualState::ValidPlacementHovered : EHexTileVisualState::InvalidPlacementHovered;
+	return CanDropOnHex(Coord) ? EHexTileVisualState::ValidPlacementHovered : EHexTileVisualState::InvalidPlacementHovered;
 }
 
 void ABoardPlayerController::ShowPlacementPreview()
@@ -254,8 +263,8 @@ bool ABoardPlayerController::CanCommitDrop() const
 {
 	if (bHasHoveredHex)
 	{
-		const UHexGrid* Grid = HexGrid.Get();
-		return Grid && Grid->CanPlaceOrSwapAt(HoveredHex);
+		// Refused in Combat: nothing reaches the board mid-round (D1), so the unit goes back.
+		return CanDropOnHex(HoveredHex);
 	}
 	// A bench slot has no zone/occupancy restriction - it always accepts a drop, whether that
 	// lands as a plain placement or a swap with whoever's already there (see EndDrag).
@@ -289,7 +298,10 @@ void ABoardPlayerController::OnSelectPressed()
 		{
 			if (ABoardUnitBase* Unit = Cast<ABoardUnitBase>(Hit.GetActor()))
 			{
-				if (Unit->GetTeam() == EBoardUnitTeam::Player)
+				// In Combat only bench units can be lifted: board champions are fighting (D1).
+				const UBench* BenchSub = Bench.Get();
+				const bool bOnBench = BenchSub && BenchSub->FindSlotIndex(Unit) != INDEX_NONE;
+				if (Unit->GetTeam() == EBoardUnitTeam::Player && (bOnBench || !IsBoardLocked()))
 				{
 					BeginDrag(Unit);
 				}

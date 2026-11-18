@@ -57,8 +57,15 @@ private:
 	void UpdateHoveredBenchSlot();
 	void ApplyHoverVisual(bool bHadPreviousHex, const FHexCoord& PreviousHex, bool bHasNewHex, const FHexCoord& NewHex);
 
-	/** ValidPlacement/InvalidPlacement per HexGrid::CanPlaceOrSwapAt - occupied-but-otherwise-legal
-	 * hexes read as valid, since dropping there swaps rather than fails (PLAN.md 5.4). */
+	/** True in Combat: the board is locked (PLAN.md D1). Board champions can't be lifted and
+	 * nothing can be dropped on a hex; the bench stays free. */
+	bool IsBoardLocked() const;
+
+	/** HexGrid::CanPlaceOrSwapAt, and the board isn't locked. Shared by the drop gate and the preview. */
+	bool CanDropOnHex(const FHexCoord& Coord) const;
+
+	/** ValidPlacement/InvalidPlacement per CanDropOnHex - occupied-but-otherwise-legal hexes read as
+	 * valid, since dropping there swaps rather than fails (PLAN.md 5.4); every hex reads invalid in Combat. */
 	EHexTileVisualState GetPlacementVisualState(const FHexCoord& Coord) const;
 
 	/** ValidPlacementHovered/InvalidPlacementHovered - the "you are here" variant applied only to
@@ -76,7 +83,7 @@ private:
 
 	/** True if the current drop target (hovered hex or hovered bench slot) will accept the unit
 	 * being dragged - gates the drop rather than only coloring it. A hex must pass
-	 * CanPlaceOrSwapAt; a bench slot has no equivalent restriction and always accepts. */
+	 * CanDropOnHex; a bench slot has no equivalent restriction and always accepts. */
 	bool CanCommitDrop() const;
 
 	/** Deprojects the mouse and intersects the board's ground plane (Z=0) analytically - not a

@@ -5,7 +5,16 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Misc/AutomationTest.h"
+#include "Engine/DataTable.h"
+#include "Engine/World.h"
+#include "Bench.h"
 #include "../Data/ChampionData.h"
+#include "../Data/EnemyData.h"
+#include "../Grid/HexGrid.h"
+#include "../Grid/HexGridTestWorld.h"
+#include "../Units/ChampionBase.h"
+#include "../Waves/RoundManager.h"
+#include "../Waves/WaveDefinition.h"
 
 namespace ChampionMergerTests
 {
@@ -130,6 +139,92 @@ bool FChampionMergeStarLimitTest::RunTest(const FString& Parameters)
 		Make(Grux, 1, 1), Make(Grux, 1, 1), Make(Grux, 1, 1) };
 	TestTrue(TEXT("Trio found"), Select(TwoTrios, Survivor, Consumed));
 	TestEqual(TEXT("Lowest star level merges first"), TwoTrios[Survivor].StarLevel, 1);
+	return true;
+}
+
+/**
+ * Merging in Combat (PLAN.md D1): the board is locked, so only bench copies merge; a trio that
+ * needs a board copy waits, and RoundManager's return to Prep completes it with the board copy as
+ * survivor. Runs in a world with real champions on the bench and board. The round is held in
+ * Combat by a one-enemy wave with no spawn hexes, and ended by hand.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FChampionMergerCombatTest, "Terrabound.Economy.ChampionMerger.Combat", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FChampionMergerCombatTest::RunTest(const FString& Parameters)
+{
+	using namespace HexGridTests;
+
+	FScopedGridWorld TestWorld;
+	UWorld* World = TestWorld.GetWorld();
+	UHexGrid* Grid = TestWorld.GetGrid();
+	UBench* Bench = World->GetSubsystem<UBench>();
+	UChampionMerger* Merger = World->GetSubsystem<UChampionMerger>();
+	URoundManager* Rounds = World->GetSubsystem<URoundManager>();
+	if (!TestNotNull(TEXT("HexGrid"), Grid) || !TestNotNull(TEXT("Bench"), Bench) || !TestNotNull(TEXT("ChampionMerger"), Merger)
+		|| !TestNotNull(TEXT("RoundManager"), Rounds) || !TestTrue(TEXT("Bench has room for four"), Bench->GetSlotCount() >= 4)
+		|| !TestTrue(TEXT("Grid has a player zone"), Grid->GetPlayerZoneTiles().Num() > 0))
+	{
+		return false;
+	}
+
+	// One round of one wave holding one enemy: with no spawn hexes it never spawns, so Combat lasts
+	// until NotifyWaveResolved is called by hand.
+	FWaveRosterEntry Entry;
+	Entry.Enemy = NewObject<UEnemyData>(GetTransientPackage());
+	FRoundRow Row;
+	Row.Waves.AddDefaulted();
+	Row.Waves[0].Roster.Add(Entry);
+	UDataTable* Table = NewObject<UDataTable>(GetTransientPackage());
+	Table->RowStruct = FRoundRow::StaticStruct();
+	Table->AddRow(TEXT("Round1"), Row);
+	Rounds->SetRoundsTable(Table);
+
+	UChampionData* Grux = NewObject<UChampionData>(GetTransientPackage());
+	UChampionData* Other = NewObject<UChampionData>(GetTransientPackage());
+	const auto Spawn = [World](UChampionData* Data)
+	{
+		AChampionBase* Champion = World->SpawnActor<AChampionBase>();
+		Champion->InitializeFromChampionData(Data);
+		return Champion;
+	};
+
+	const FHexCoord BoardHex = Grid->GetPlayerZoneTiles()[0];
+	AChampionBase* BoardCopy = Spawn(Grux);
+	Grid->SetOccupant(BoardHex, BoardCopy);
+	AChampionBase* BenchCopy = Spawn(Grux);
+	Bench->AddChampion(BenchCopy);
+
+	TestTrue(TEXT("In Prep, a bought copy would complete the board + bench pair"), Merger->WouldCompleteMerge(Grux));
+	if (!TestTrue(TEXT("The round starts"), Rounds->StartRound()))
+	{
+		return false;
+	}
+	TestFalse(TEXT("In Combat, the board copy doesn't count toward a merge"), Merger->WouldCompleteMerge(Grux));
+
+	// Buy a third copy mid-round: no merge, it goes to the bench as ShopSystem would place it.
+	AChampionBase* Bought = Spawn(Grux);
+	TestFalse(TEXT("In Combat, a trio needing a board copy doesn't merge"), Merger->TryMerge(Bought));
+	Bench->AddChampion(Bought);
+	TestEqual(TEXT("The board copy stays 1-star"), BoardCopy->GetStarLevel(), 1);
+	TestEqual(TEXT("The bench copy stays 1-star"), BenchCopy->GetStarLevel(), 1);
+
+	// A trio entirely on the bench still merges in Combat; the survivor is a bench copy.
+	AChampionBase* OtherA = Spawn(Other);
+	AChampionBase* OtherB = Spawn(Other);
+	Bench->AddChampion(OtherA);
+	Bench->AddChampion(OtherB);
+	TestTrue(TEXT("In Combat, a bench-only trio merges and consumes the bought copy"), Merger->TryMerge(Spawn(Other)));
+	const bool bBenchSurvivor = (IsValid(OtherA) && OtherA->GetStarLevel() == 2 && Bench->FindSlotIndex(OtherA) != INDEX_NONE)
+		|| (IsValid(OtherB) && OtherB->GetStarLevel() == 2 && Bench->FindSlotIndex(OtherB) != INDEX_NONE);
+	TestTrue(TEXT("The bench-only merge's survivor is a 2-star on the bench"), bBenchSurvivor);
+
+	// End the round: entering Prep completes the held-back trio onto the board copy.
+	Rounds->NotifyWaveResolved();
+	TestTrue(TEXT("Back in Prep"), Rounds->GetPhase() == ERoundPhase::Prep);
+	TestEqual(TEXT("The board copy survives as a 2-star"), BoardCopy->GetStarLevel(), 2);
+	TestTrue(TEXT("It keeps its hex"), Grid->GetTile(BoardHex)->Occupant.Get() == BoardCopy);
+	TestEqual(TEXT("The two bench copies were consumed"), Bench->FindSlotIndex(BenchCopy) == INDEX_NONE && Bench->FindSlotIndex(Bought) == INDEX_NONE, true);
+
 	return true;
 }
 
