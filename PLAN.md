@@ -42,9 +42,9 @@ assume them; change one here first if it needs revisiting.
 
 | # | Question | Decision |
 |---|---|---|
-| D0 | Rounds and waves (`DESIGN.md` §"Rounds and waves", §"Spawn pacing") | A **round** runs prep to prep and holds a fixed list of **waves**. Wave N+1 starts spawning **`WaveGapSeconds` after** wave N is resolved (every enemy dead or exited); the round's first wave starts at once. The gap (placeholder **3 s**, on `ASpawnHexConfig`) was added 2026-11-18 at the user's request; it is still Combat, with no input, healing or repositioning. The round ends when its last wave resolves, and play returns to Prep. Combat lasts the whole round. **One timer only:** the per-wave spawn timer (D14), which also counts down the gap. No prep timer, no stuck-wave timer. |
+| D0 | Rounds and waves (`DESIGN.md` §"Rounds and waves", §"Spawn pacing") | A **round** runs prep to prep and holds a fixed list of **waves**. Wave N+1 starts spawning **`WaveGapSeconds` after** wave N is resolved (every enemy dead or exited); the round's first wave starts at once. The gap (placeholder **5 s** in `MainBoard`, tuned by the user 2026-11-19; on `ASpawnHexConfig`) was added 2026-11-18 at the user's request; it is still Combat, with no input, healing or repositioning. The round ends when its last wave resolves, and play returns to Prep. Combat lasts the whole round. **One timer only:** the per-wave spawn timer (D14), which also counts down the gap. No prep timer, no stuck-wave timer. |
 | D1 | Which actions are allowed mid-round? | **The board locks, the bench doesn't (TFT; revised 2026-11-18, replacing "Prep only").** During combat, which spans every wave of the round and the gaps between them, the player can still reroll, buy onto the bench, sell bench champions, and drag bench ↔ bench. A board champion can't be lifted, so it can't be moved, swapped or sold, and nothing can be dropped onto a hex. Merges use bench copies only. A trio that needs a board copy waits for `ChampionMerger::MergeAll`, which `RoundManager` runs on entering Prep, with the board copy surviving in place. A mid-round merge never destroys a fighting unit, and champions never move during a round. |
-| D2 | What starts a round? | **The player**, via a `StartRound` console command and key (the **Start** in `DESIGN.md`). No prep timer. A Start button is UI, which waits. |
+| D2 | What starts a round? | **The player**, via a `StartRound` console command and key (the **Start** in `DESIGN.md`), and a **Start button** next to the shop (added 2026-11-19 at the user's request, task 1.9; greyed out outside Prep). No prep timer. |
 | D3 | How does the player earn gold? | **Kill gold only; no flat per-wave income** (the unused `BaseIncomePerWave` is removed). Each enemy carries a flat `GoldOnKill` on `EnemyData` (placeholder 1; a per-type value is the same field with another number). It is granted automatically the moment the enemy dies, and the HUD shows a `+N` at the gold counter. Gold earned mid-round can be spent mid-round on rerolls and bench buys (D1). `StartingGold` funds the first prep. Interest and streaks are separate systems, later. A leaking enemy drops no gold: that is an intended punishment for leaking, additional to any leak cost chosen later. |
 | D4 | A champion dies: what happens to its pool copies? | **Return them to the pool, no refund.** Otherwise deaths shrink the pool for good and an endless run dries the shop up. A dead star-up returns every copy it is worth. |
 | D5 | How do champions pick targets? | **Nearest enemy in range by hex distance**; hold until it dies, becomes untargetable, or leaves range. No free-hex test, because champions don't move. Melee champions (range 1) use the same rule, so they lock too — the default `DESIGN.md` §4 leaves open; flag it if it reads wrong in play. Taunt and interrupt are future lock breaks through the same path; neither is built. |
@@ -56,8 +56,8 @@ assume them; change one here first if it needs revisiting.
 | D11 | Unit cap | **Flat config value**, placeholder **10**, marked unresolved, on `DA_BoardConfig`. It counts board champions only. A cap of 6 or less makes a full-row wall impossible, so tune it down during 4.2. The growth formula is deferred. |
 | D12 | Where do spawn hexes live? | **A level-placed C++ actor** holding the array, not a level Blueprint graph. The array is data on the placed instance and needs no graph. A player-zone entry is an error: logged, its spawn flag cleared, and the hex kept a normal player hex. |
 | D13 | Round data shape | **`DT_Rounds`**, one row per round. Each row holds its own list of waves (3 each for now; there is no separate waves-per-round number), and each wave a roster of `{EnemyData, Count, SpawnWindow}` with `SpawnWindow` one of Early / Any / Late. Rounds past the table repeat the last row. The endless scaling formula is out of scope. |
-| D14 | Spawn timing | **One randomized timer per wave, not per hex.** The first enemy of a wave spawns at once; after each spawn the next delay is drawn uniformly from `[MinSpawnInterval, MaxSpawnInterval]` (placeholders **1.0 / 2.0 s**). When the delay has elapsed, a spawn hex is free and an eligible entry exists, that entry spawns on a **random free spawn hex**; otherwise the timer stays elapsed. The range lives on `ASpawnHexConfig` (level configuration, next to the hexes), tuned in 1.7 against the 3.5 s crossing time. A per-wave override is not added until play asks. |
-| D15 | Animation | **Walk, basic attack and death are in scope** (1.8, 3.8), played from C++ as montages on the `UpperBody` slot that every stock Paragon ABP already has (`ANIMATION_FINDINGS.md`). No new or edited Animation Blueprints; the Paragon folders stay as imported. The clips are fields you assign on the data assets. Ability animations wait for mana. |
+| D14 | Spawn timing | **One randomized timer per wave, not per hex.** The first enemy of a wave spawns at once; after each spawn the next delay is drawn uniformly from `[MinSpawnInterval, MaxSpawnInterval]` (placeholders **3.0 / 4.0 s** in `MainBoard`, tuned by the user 2026-11-19 from 1.0 / 2.0 s, which felt far too fast). When the delay has elapsed, a spawn hex is free and an eligible entry exists, that entry spawns on a **random free spawn hex**; otherwise the timer stays elapsed. The range lives on `ASpawnHexConfig` (level configuration, next to the hexes), tuned in 1.7 against the 3.5 s crossing time. A per-wave override is not added until play asks. |
+| D15 | Animation | **Walk, basic attack and death are in scope** (1.8, 3.8), played from C++ as montages on the `UpperBody` slot that every stock Paragon ABP already has (`ANIMATION_FINDINGS.md`). **A spawning enemy holds still for a per-enemy `SpawnHoldSeconds`** while the ABP's own `LevelStart` montage plays, sped up from C++ to fit the hold, and only then starts walking (1.8; the user's call 2026-11-19, replacing "the walk overrides `LevelStart`"). No new or edited Animation Blueprints; the Paragon folders stay as imported. The clips are fields you assign on the data assets. Ability animations wait for mana. |
 | D16 | When does an attack's damage land? | **After a per-unit `AttackHitDelaySeconds`** (a data field, tuned by eye), because no montage in the packs has an impact notify to hang it on. It fizzles if the target died or became untargetable during the delay. Phase 2 stays instant until 3.8 adds it. |
 | D17 | Round-start heal | **`RoundManager` applies an instant heal-to-full GameplayEffect to every living board champion on entering Prep** (bench champions take no damage). It is an effect on surviving actors, never a reset or respawn. Dead champions stay dead (D4). Built in 2.7. |
 | D18 | Route planning and units | **The search ignores units entirely** (`CLAUDE.md` "Terrain redirects. Units stop."). `OccupiedTileCost` is removed from `FHexPathfinder`, `UBoardConfig` and `UHexGrid` (1.2b). An enemy whose next step is a champion adopts it as target (3.2); one whose next step holds another enemy waits (default; an equally short free alternative step is the first fix if queues look bad). |
@@ -388,7 +388,14 @@ now wait for the rest of their wave to spawn, not to die or leak.
 Watch a real round. Record the crossing time from the enemy's own log against the 3.5 s from
 Checkpoint 1, and how each wave enters against the spawn timer (one lump, or a stream with an
 opening, a middle and a tail). Tune the delay range on the Spawn Hex Config and wave sizes in
-`DT_Rounds`, and the wave gap (`WaveGapSeconds`, placeholder 3 s). Then delete
+`DT_Rounds`, and the wave gap (`WaveGapSeconds`, placeholder 3 s).
+
+**Tuning already done by the user (2026-11-19, while doing 1.6):** 3 s / 4 s interval, wave gap
+5 s, and enemy speed 0.5 hexes/s, down from 2 (a 14 s crossing instead of 3.5 s). The user likes
+this speed for now; what remains is to write the result down. 1.8's spawn hold doesn't change the
+pacing: with three spawn hexes, a ~5 s hold frees a hex every ~1.7 s, faster than the 3–4 s timer.
+
+Then delete
 `Debug/DebugPathWalker.*` and the `SpawnPathWalker` command; keep `FHexPathfinder` and its tests.
 Also add the **Start key** (D2), deferred from 1.4a: an input binding in `BoardPlayerController`
 that calls `URoundManager::StartRound`, plus the input mapping in the editor.
@@ -407,8 +414,14 @@ gains `AnimMontageSlotName` (`UpperBody`, config: it is the same in all four pac
 change for a non-Paragon pack). `ABoardUnitBase` gets start and stop calls that play the sequence
 as a looping dynamic montage on that slot. `AEnemyBase` starts it when a step begins, does not
 restart it between consecutive steps, and stops it when the enemy holds, attacks or exits.
-**Editor:** set `WalkAnimation` on each `DA_Enemy_*` to the pack's `Jog_Fwd`, and tune
-`WalkPlayRate` by eye so the feet don't slide at 2 hexes/s.
+**Spawn hold (added 2026-11-19, D15):** `UEnemyData` also gains `SpawnHoldSeconds` (placeholder,
+roughly the 5 s `LevelStart` length or less). An enemy that enters the board holds its spawn hex and
+takes no step until the hold has elapsed, then starts walking and plays the walk loop. C++ sets the
+play rate of the `LevelStart` montage the ABP started so it ends with the hold (no ABP edit). An enemy
+in its hold **can be targeted and shot** like any enemy on a hex (the user's call, 2026-11-19); it is
+not untargetable.
+**Editor:** set `WalkAnimation` on each `DA_Enemy_*` to the pack's `Jog_Fwd`, tune `WalkPlayRate`
+by eye so the feet don't slide at the current 0.5 hexes/s, and set `SpawnHoldSeconds`.
 
 **Why a montage, from the findings (`ANIMATION_FINDINGS.md`):** the stock ABPs read velocity through
 `TryGetPawnOwner`, which is null for our actors, so their locomotion variables never leave 0 and the
@@ -418,11 +431,25 @@ is worse than playing `Jog_Fwd` directly. With `IsAccelerating` false, a montage
 drives the whole body, the same route the spawn animation already takes.
 
 **Spike first.** Confirm three things before building the rest: a looping dynamic montage on
-`UpperBody` plays full-body on a non-pawn actor; it overrides the 5 s `LevelStart` montage the ABP
-starts at spawn (enemies must not stand through it); and the loop is seamless.
+`UpperBody` plays full-body on a non-pawn actor; C++ can find and re-rate the `LevelStart` montage
+the ABP starts at spawn, and the walk takes over cleanly once it ends; and the loop is seamless.
 
-**Done when:** enemies visibly walk their route, stop walking when they hold or exit, and are not
-held up by the spawn animation.
+**Done when:** enemies play their spawn animation in place for `SpawnHoldSeconds`, then visibly
+walk their route, and stop walking when they hold or exit.
+
+### 1.9 Round HUD (`Waves/`, UI)
+**[C++ + Editor]** Added 2026-11-19 at the user's request.
+**C++:** `BlueprintPure` getters the widgets bind to; no decision lives in a widget.
+`URoundManager`: `CanStartRound()` (true only in Prep), with `StartRound` callable from Blueprint,
+plus the round number. `UWaveManager`: whether the wave gap is running, the gap time remaining,
+and the current wave index and wave count of the round (exact getter names and owners settled in
+the task plan).
+**Editor:** a **Start button** next to the shop, enabled from `CanStartRound`, calling
+`StartRound`; a **"Round N · Wave X/Y" label**; a **"Next wave in N" countdown** shown only during
+the wave gap.
+
+**Done when:** a round can be started from the button, the button is greyed out in combat, the
+label tracks the round and wave, and the countdown runs during each gap.
 
 ---
 
@@ -716,6 +743,9 @@ Record the answers here, as Checkpoint 1's 7.1 recorded crossing time. These are
 - [ ] No paid heal and no damaged-sell rule exist
 - [ ] Enemies play a walk loop, and attacks and deaths play their clips, with no new or edited
       Animation Blueprint and the Paragon folders untouched
+- [ ] Enemies hold still through their spawn animation (`SpawnHoldSeconds`) before walking
+- [ ] A Start button next to the shop starts the round; a label shows round and wave; a countdown
+      runs during each wave gap
 - [ ] `ADebugPathWalker` and `SpawnPathWalker` removed
 - [ ] Crossing time and spawn-pacing verdict written down
 - [ ] Playtest questions in 4.2 answered in writing
@@ -733,7 +763,7 @@ round display. The endless scaling formula for rounds. A prep timer, a
 stuck-wave timer or safety net (the per-wave spawn timer, D14, is the only timer). A per-wave
 spawn-delay override. The "equally short alternative step" for queued enemies, until 4.2 asks for
 it. Taunts and interrupts. HP bars, damage numbers, world-space popups and other UI (the HUD `+N`
-gold popup, 2.9, is the one exception); a Start button. Interest and streaks. Ability animations (with
+gold popup, 2.9, and the round HUD, 1.9, are the exceptions). Interest and streaks. Ability animations (with
 mana), animation notifies, and any new or edited Animation Blueprint, including driving the stock
 ABPs' `Speed` and `IsAccelerating` from C++. Projectiles, windup, line-of-fire
 blocking. A ranged enemy archetype, `TargetableInterface`, `CombatResolver`. Augments, items,
@@ -748,7 +778,8 @@ Several of these are one small step from something in this plan. That is why the
 
 - **The stock ABPs are pawn-shaped.** They idle and play the spawn animation fine but never see
   velocity, which is why walking is played directly (1.8). They also start a 5 s `LevelStart`
-  montage on every spawn, including enemies; the 1.8 spike checks the walk overrides it.
+  montage on every spawn, including enemies; 1.8 holds the enemy in place for it and re-rates it
+  to fit `SpawnHoldSeconds`.
 - **Attack timing is approximate.** There is no impact notify, so the hit delay is tuned by eye
   per hero (D16). Paragon animation timing is tuned for a MOBA camera and may still want
   adjusting at this zoom.

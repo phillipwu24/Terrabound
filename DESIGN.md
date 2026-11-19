@@ -493,7 +493,7 @@ full. Dead champions stay dead. The round begins when the player presses
 
 **Waves run back to back with no player input.** A wave begins spawning only once
 every enemy of the previous wave is resolved — dead or exited — and a short gap
-(placeholder 3 s) has passed. The gap is a breather that marks where one wave
+(placeholder 5 s) has passed. The gap is a breather that marks where one wave
 ends and the next begins; it is not a prep phase. Between waves
 there is no repositioning and no healing; the board ends one wave in exactly the
 state it starts the next. The round ends when its last wave is resolved, and play

@@ -166,7 +166,7 @@ as rows `BoardDepth - PlaceableRowCount` through `BoardDepth - 1`.
   merges use bench copies only (`PLAN.md` D1).
 - **Waves** run back to back with no player input. The next wave starts spawning
   only once every enemy of the current wave is dead or exited, plus a short gap
-  (`WaveGapSeconds` on the level's spawn config, placeholder 3 s, counted on the
+  (`WaveGapSeconds` on the level's spawn config, placeholder 5 s, counted on the
   wave's spawn timer). The gap is still combat: no repositioning and no healing
   between waves.
 - **A wave is a fixed roster.** Spawn timing and which spawn hex each enemy uses
