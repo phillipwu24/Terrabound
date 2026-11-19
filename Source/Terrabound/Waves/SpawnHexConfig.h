@@ -33,15 +33,15 @@ public:
 	TArray<FHexCoord> SpawnHexes;
 
 	/**
-	 * PLACEHOLDER (D14), tuned in PLAN.md 1.7 against the 3.5 s crossing time. After each spawn the
-	 * next delay is drawn uniformly from [MinSpawnInterval, MaxSpawnInterval] seconds. Read at the
-	 * start of every wave. Min above Max is logged and swapped.
+	 * PLACEHOLDER (D14), tuned by the user in PLAN.md 1.6/1.7 against a 14 s crossing (0.5 hexes/s).
+	 * After each spawn the next delay is drawn uniformly from [MinSpawnInterval, MaxSpawnInterval]
+	 * seconds. Read at the start of every wave. Min above Max is logged and swapped.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawn", meta = (ClampMin = "0", Units = "s"))
-	float MinSpawnInterval = 1.f;
+	float MinSpawnInterval = 3.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawn", meta = (ClampMin = "0", Units = "s"))
-	float MaxSpawnInterval = 2.f;
+	float MaxSpawnInterval = 4.f;
 
 	/**
 	 * PLACEHOLDER (D0). Seconds between a wave resolving and the next wave's first spawn. The first
@@ -49,7 +49,7 @@ public:
 	 * repositioning. Read at the start of every wave.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawn", meta = (ClampMin = "0", Units = "s"))
-	float WaveGapSeconds = 3.f;
+	float WaveGapSeconds = 5.f;
 
 	/**
 	 * Flags every SpawnHexes entry as a spawn tile on the grid. An off-board entry is logged and

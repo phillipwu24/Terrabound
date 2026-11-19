@@ -78,6 +78,7 @@ void ABoardPlayerController::SetupInputComponent()
 	InputComponent->BindAction(TEXT("Select"), IE_Released, this, &ABoardPlayerController::OnSelectReleased);
 	InputComponent->BindAction(TEXT("CancelDrag"), IE_Pressed, this, &ABoardPlayerController::OnCancelDrag);
 	InputComponent->BindAction(TEXT("Sell"), IE_Pressed, this, &ABoardPlayerController::OnSellPressed);
+	InputComponent->BindAction(TEXT("StartRound"), IE_Pressed, this, &ABoardPlayerController::OnStartRoundPressed);
 }
 
 bool ABoardPlayerController::DeprojectCursorToGroundPlane(FVector& OutHitPoint) const
@@ -341,6 +342,15 @@ void ABoardPlayerController::OnCancelDrag()
 	if (DraggedUnit.IsValid())
 	{
 		EndDrag(/*bCancel=*/true);
+	}
+}
+
+void ABoardPlayerController::OnStartRoundPressed()
+{
+	// RoundManager decides (Prep only, nothing carried) and logs any refusal (PLAN.md D2).
+	if (URoundManager* Rounds = GetWorld() ? GetWorld()->GetSubsystem<URoundManager>() : nullptr)
+	{
+		Rounds->StartRound();
 	}
 }
 

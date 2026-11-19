@@ -35,11 +35,12 @@ public:
 	TSubclassOf<UAnimInstance> AnimBlueprint;
 
 	/**
-	 * Walking speed in hexes per second, not cm/s, so a HexRadius change never retunes it. 2.0 puts
-	 * an empty-board crossing (7 hexes) at 3.5 s - the figure Checkpoint 1's walker settled on.
+	 * Walking speed in hexes per second, not cm/s, so a HexRadius change never retunes it. 0.5 puts
+	 * an empty-board crossing (7 hexes) at 14 s, the user's tuning in PLAN.md 1.6/1.7 (Checkpoint 1
+	 * started at 2.0 and 3.5 s, which felt far too fast).
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Movement", meta = (ClampMin = "0.1"))
-	float MoveSpeedHexesPerSecond = 2.f;
+	float MoveSpeedHexesPerSecond = 0.5f;
 
 	// --- AttributeSet initialization data. Stored, read by nothing until Phase 2. ---
 

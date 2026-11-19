@@ -98,6 +98,7 @@ private:
 	void OnSelectReleased();
 	void OnCancelDrag();
 	void OnSellPressed();
+	void OnStartRoundPressed();
 
 	void BeginDrag(ABoardUnitBase* Unit);
 	void EndDrag(bool bCancel);
