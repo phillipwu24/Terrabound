@@ -407,6 +407,25 @@ or with champions out of the lanes. Task 3.2 removes this.
 **Done when:** crossing time and the spawn-pacing verdict are written into this task as a
 result, as in Checkpoint 1's 7.1, and the walker is gone.
 
+**Done (2026-11-19; one PIE round on `MainBoard`, empty board, user's tuning).** As built: the Start
+key is **Enter** (`StartRound` action in `Config/DefaultInput.ini`, bound in `BoardPlayerController`,
+which only asks `URoundManager::StartRound`; refusals stay there). `Debug/DebugPathWalker.*` and
+`SpawnPathWalker` are deleted. The C++ defaults now match the tuning (`MoveSpeedHexesPerSecond`
+0.5, `ASpawnHexConfig` 3 / 4 s and a 5 s gap).
+- **Crossing time: 14.00 s** for every enemy (7 hexes at 0.5 hexes/s, 0 s held), exactly as
+  computed, against Checkpoint 1's 3.5 s.
+- **Spawn pacing: a stream, not a lump.** Round 1 (2 waves of 3) ran 48 s from Start to Prep.
+  Each wave's three enemies arrive 3.4–3.7 s apart, so a wave lasts about 21 s from first spawn
+  to last exit and never has more than three enemies on the board. Each enemy crosses alone, with
+  no queuing. The gap ran 5.00 s from the last exit to the next first spawn. The first spawn after
+  Start came 0.56 s late, most likely the first synchronous load of the enemy asset. It isn't
+  repeated later, so it's not chased.
+- **Start key:** Enter during combat was refused and logged. The carried-unit refusal was not
+  exercised in this run (it has been since 1.4a).
+- **Noticed in content, not code:** every `DA_Enemy_*` had Display Name "Grux" (copied from
+  `DA_Enemy_Grux`), so logs named every enemy Grux; the user fixed it. Round 1 of `DT_Rounds` has
+  2 waves, where 1.6 asked for 3.
+
 ### 1.8 Walk animation (`Units/`, `Data/`)
 **[C++ + Editor]**
 **C++:** `UEnemyData` gains `WalkAnimation` (a `UAnimSequence`) and `WalkPlayRate`. `UTerraboundSettings`

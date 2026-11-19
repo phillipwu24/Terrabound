@@ -27,8 +27,9 @@ that shoots, then blockers and aggro. See `PLAN.md`. Phase 1 tasks 1.1 (`TryOccu
 1.2 (`EnemyData`, `EnemyBase` walking), 1.3 (spawn hex config), 1.2b (route planning
 ignores units), 1.4a (`RoundManager`), 1.4b (`WaveManager`, plus a wave gap), 1.5
 (combat locks the board, not the bench) and 1.6 (enemy assets and `DT_Rounds`; spawn
-windows now count enemies spawned, not resolved) are done; next is 1.7 (measure, tune,
-retire the walker, Start key). Design revised 2026-11-17 (stationary champions, units
+windows now count enemies spawned, not resolved) and 1.7 (crossing 14 s at 0.5 hexes/s,
+walker retired, Start key = Enter) are done; next is 1.8 (walk animation and spawn hold),
+then 1.9 (round HUD). Design revised 2026-11-17 (stationary champions, units
 stop, rounds of waves, round-long damage) — `DESIGN.md` header.
 
 ## Build command
