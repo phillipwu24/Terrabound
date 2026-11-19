@@ -72,6 +72,15 @@ TStatId UWaveManager::GetStatId() const
 	RETURN_QUICK_DECLARE_CYCLE_STAT(UWaveManager, STATGROUP_Tickables);
 }
 
+FText UWaveManager::GetWaveGapText() const
+{
+	if (!IsInWaveGap())
+	{
+		return FText::GetEmpty();
+	}
+	return FText::Format(NSLOCTEXT("Terrabound", "WaveGapCountdown", "Next wave in {0}"), FMath::CeilToInt(TimeUntilNextSpawn));
+}
+
 float UWaveManager::GetProgress() const
 {
 	return RosterSize > 0 ? static_cast<float>(GetSpawnedCount()) / RosterSize : 1.f;

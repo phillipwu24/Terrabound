@@ -80,6 +80,18 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Wave")
 	float GetTimeUntilNextSpawn() const { return TimeUntilNextSpawn; }
 
+	/**
+	 * True while a later wave of the round holds its first spawn for the wave gap: nothing spawned
+	 * yet and the timer still running. Never true for a round's first wave, whose timer starts at 0.
+	 * Once the timer runs out the gap is over, even if a full spawn hex delays the spawn.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Wave")
+	bool IsInWaveGap() const { return bWaveActive && GetSpawnedCount() == 0 && TimeUntilNextSpawn > 0.f; }
+
+	/** The round HUD countdown: "Next wave in N" (whole seconds, rounded up) during the gap, empty otherwise. */
+	UFUNCTION(BlueprintPure, Category = "Wave")
+	FText GetWaveGapText() const;
+
 private:
 	struct FPendingSpawn
 	{

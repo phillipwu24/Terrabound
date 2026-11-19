@@ -153,18 +153,25 @@ bool FWaveManagerGapTest::RunTest(const FString& Parameters)
 	Wave.Roster.Add(MakeEntry(MakeEnemyData(), 1, ESpawnWindow::Any));
 
 	Waves->StartWave(Wave, false);
+	TestTrue(TEXT("A later wave starts in the gap"), Waves->IsInWaveGap());
+	TestEqual(TEXT("Countdown shows the whole gap"), Waves->GetWaveGapText().ToString(), FString(TEXT("Next wave in 3")));
 	Run(*Waves, TestWorld.GetWorld(), 2.9f, false);
 	TestEqual(TEXT("A later wave spawns nothing during the gap"), Waves->GetAliveCount(), 0);
+	TestTrue(TEXT("Still in the gap near its end"), Waves->IsInWaveGap());
+	TestEqual(TEXT("Countdown rounds up"), Waves->GetWaveGapText().ToString(), FString(TEXT("Next wave in 1")));
 	Run(*Waves, TestWorld.GetWorld(), 0.2f, false);
 	const TArray<AEnemyBase*> Enemies = GetEnemies(TestWorld.GetWorld());
 	if (!TestEqual(TEXT("A later wave spawns once the gap has passed"), Enemies.Num(), 1))
 	{
 		return false;
 	}
+	TestFalse(TEXT("The gap ends with the first spawn"), Waves->IsInWaveGap());
+	TestTrue(TEXT("No countdown outside the gap"), Waves->GetWaveGapText().IsEmpty());
 	Enemies[0]->Destroy();
 	TestFalse(TEXT("That wave resolves"), Waves->IsWaveActive());
 
 	Waves->StartWave(Wave, true);
+	TestFalse(TEXT("A round's first wave has no gap"), Waves->IsInWaveGap());
 	Waves->AdvanceSpawning(Dt);
 	TestEqual(TEXT("The round's first wave spawns at once despite the gap"), Waves->GetAliveCount(), 1);
 

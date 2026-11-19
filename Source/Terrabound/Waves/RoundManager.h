@@ -43,6 +43,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Round")
 	bool StartRound();
 
+	/** Whether StartRound would succeed right now: the same checks, without the log. Drives the Start button. */
+	UFUNCTION(BlueprintPure, Category = "Round")
+	bool CanStartRound() const { return GetStartRefusal() == EStartRefusal::None; }
+
+	/** The round HUD label: "Round N · Wave X/Y" in Combat, "Round N · Prep" in Prep (N being the round about to start). */
+	UFUNCTION(BlueprintPure, Category = "Round")
+	FText GetRoundStatusText() const;
+
 	/**
 	 * WaveManager's hook: the current wave is resolved (every enemy dead or exited). Hands over the
 	 * next wave, or ends the round after the last. Ignored outside Combat.
@@ -85,6 +93,17 @@ public:
 	FOnRoundPhaseChanged OnPhaseChanged;
 
 private:
+	enum class EStartRefusal : uint8
+	{
+		None,
+		NotInPrep,
+		CarryingUnit,
+		NoRoundData
+	};
+
+	/** Why StartRound would refuse now, shared by StartRound (which logs it) and CanStartRound. */
+	EStartRefusal GetStartRefusal() const;
+
 	/** The current round's row: RoundIndex, or the last row once past the end. Null without data. */
 	const FRoundRow* GetCurrentRoundRow() const;
 

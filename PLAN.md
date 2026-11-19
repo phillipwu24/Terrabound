@@ -487,6 +487,24 @@ the wave gap.
 **Done when:** a round can be started from the button, the button is greyed out in combat, the
 label tracks the round and wave, and the countdown runs during each gap.
 
+**Done (2026-11-19; PIE on `MainBoard`, checked by the user).** As built:
+- **C++.** `URoundManager` has `CanStartRound()`, which runs the same checks as `StartRound`
+  through a private `GetStartRefusal()`: Prep, no carried unit, round data. `StartRound` is
+  `BlueprintCallable` and logs the refusal reason. `GetRoundStatusText()` reads "Round N · Prep"
+  or "Round N · Wave X/Y". The wave index and count stay on `URoundManager`.
+- **C++, gap.** `UWaveManager` has `IsInWaveGap()` (a later wave, nothing spawned yet, timer still
+  running) and `GetWaveGapText()` ("Next wave in N", rounded up, empty outside the gap).
+- **Editor.** `WBP_RoundPanel` holds the label, the countdown and the Start button. It lives in
+  `WBP_Shop`'s `ShopBar`: a full-width bar made of a Fill spacer, `CardRow`, then a Fill column
+  holding `RerollButton` and `WBP_RoundPanel`. That keeps the cards centred and the column next to
+  them at any resolution and any card width. `GoldText` moved to the top right, right-aligned with
+  the trait panel.
+- **Tick, not bindings.** The panel's Event Tick sets the button's enabled state and both texts
+  from the getters. UMG property bindings can't be created through the MCP tools, and the Tick has
+  no Branch or Select. `OnClicked` calls `StartRound`.
+- **Tests:** `RoundManager.Flow` and `.Refusals` cover `CanStartRound` and the label;
+  `WaveManager.Gap` covers the gap and the countdown. 32/32 pass.
+
 ---
 
 # Phase 2 — GAS and the first champion that shoots

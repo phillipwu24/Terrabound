@@ -71,6 +71,8 @@ bool FRoundManagerFlowTest::RunTest(const FString& Parameters)
 
 	TestTrue(TEXT("A new run starts in Prep"), Rounds->GetPhase() == ERoundPhase::Prep);
 	TestEqual(TEXT("A new run starts on round index 0"), Rounds->GetRoundIndex(), 0);
+	TestTrue(TEXT("CanStartRound in Prep with data"), Rounds->CanStartRound());
+	TestEqual(TEXT("Prep label"), Rounds->GetRoundStatusText().ToString(), FString(TEXT("Round 1 · Prep")));
 
 	if (!TestTrue(TEXT("StartRound succeeds in Prep"), Rounds->StartRound()))
 	{
@@ -79,12 +81,15 @@ bool FRoundManagerFlowTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Start enters Combat"), Rounds->GetPhase() == ERoundPhase::Combat);
 	TestEqual(TEXT("Round 1 has three waves"), Rounds->GetWaveCount(), 3);
 	TestEqual(TEXT("Wave 1 is in progress"), Rounds->GetWaveIndex(), 0);
+	TestFalse(TEXT("CanStartRound is false in Combat"), Rounds->CanStartRound());
+	TestEqual(TEXT("Combat label"), Rounds->GetRoundStatusText().ToString(), FString(TEXT("Round 1 · Wave 1/3")));
 	TestFalse(TEXT("StartRound refuses in Combat"), Rounds->StartRound());
 	TestEqual(TEXT("The refused Start changed nothing"), Rounds->GetWaveIndex(), 0);
 
 	Rounds->NotifyWaveResolved();
 	TestTrue(TEXT("Still Combat after wave 1 resolves"), Rounds->GetPhase() == ERoundPhase::Combat);
 	TestEqual(TEXT("Wave 2 starts at once"), Rounds->GetWaveIndex(), 1);
+	TestEqual(TEXT("Label follows the wave"), Rounds->GetRoundStatusText().ToString(), FString(TEXT("Round 1 · Wave 2/3")));
 
 	Rounds->NotifyWaveResolved();
 	TestTrue(TEXT("Still Combat after wave 2 resolves"), Rounds->GetPhase() == ERoundPhase::Combat);
@@ -93,6 +98,8 @@ bool FRoundManagerFlowTest::RunTest(const FString& Parameters)
 	Rounds->NotifyWaveResolved();
 	TestTrue(TEXT("Back to Prep after the last wave"), Rounds->GetPhase() == ERoundPhase::Prep);
 	TestEqual(TEXT("Round index advances"), Rounds->GetRoundIndex(), 1);
+	TestTrue(TEXT("CanStartRound again in the next Prep"), Rounds->CanStartRound());
+	TestEqual(TEXT("Prep label names the next round"), Rounds->GetRoundStatusText().ToString(), FString(TEXT("Round 2 · Prep")));
 
 	if (TestEqual(TEXT("Exactly two phase changes in round 1"), PhaseEvents.Num(), 2))
 	{
@@ -178,12 +185,15 @@ bool FRoundManagerRefusalsTest::RunTest(const FString& Parameters)
 	AddExpectedError(TEXT("StartRound refused - no round data"), EAutomationExpectedErrorFlags::Contains, 3);
 
 	Rounds->SetRoundsTable(nullptr);
+	TestFalse(TEXT("No table: CanStartRound is false"), Rounds->CanStartRound());
 	TestFalse(TEXT("No table: Start refuses"), Rounds->StartRound());
 
 	Rounds->SetRoundsTable(MakeRoundsTable({}));
+	TestFalse(TEXT("Empty table: CanStartRound is false"), Rounds->CanStartRound());
 	TestFalse(TEXT("Empty table: Start refuses"), Rounds->StartRound());
 
 	Rounds->SetRoundsTable(MakeRoundsTable({ 0 }));
+	TestFalse(TEXT("A round with no waves: CanStartRound is false"), Rounds->CanStartRound());
 	TestFalse(TEXT("A round with no waves: Start refuses"), Rounds->StartRound());
 
 	TestTrue(TEXT("Still in Prep after every refusal"), Rounds->GetPhase() == ERoundPhase::Prep);

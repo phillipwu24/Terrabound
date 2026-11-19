@@ -22,26 +22,38 @@ void URoundManager::Initialize(FSubsystemCollectionBase& Collection)
 	}
 }
 
-bool URoundManager::StartRound()
+URoundManager::EStartRefusal URoundManager::GetStartRefusal() const
 {
 	if (Phase != ERoundPhase::Prep)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("RoundManager: StartRound refused - round %d is already in combat."), RoundIndex + 1);
-		return false;
+		return EStartRefusal::NotInPrep;
 	}
 
 	const UWorld* World = GetWorld();
 	const ABoardPlayerController* Controller = World ? Cast<ABoardPlayerController>(World->GetFirstPlayerController()) : nullptr;
 	if (Controller && Controller->IsCarryingUnit())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("RoundManager: StartRound refused - a unit is being carried. Drop it first."));
-		return false;
+		return EStartRefusal::CarryingUnit;
 	}
 
-	if (GetWaveCount() == 0)
+	return GetWaveCount() == 0 ? EStartRefusal::NoRoundData : EStartRefusal::None;
+}
+
+bool URoundManager::StartRound()
+{
+	switch (GetStartRefusal())
 	{
+	case EStartRefusal::NotInPrep:
+		UE_LOG(LogTemp, Warning, TEXT("RoundManager: StartRound refused - round %d is already in combat."), RoundIndex + 1);
+		return false;
+	case EStartRefusal::CarryingUnit:
+		UE_LOG(LogTemp, Warning, TEXT("RoundManager: StartRound refused - a unit is being carried. Drop it first."));
+		return false;
+	case EStartRefusal::NoRoundData:
 		UE_LOG(LogTemp, Error, TEXT("RoundManager: StartRound refused - no round data (set RoundsTable in Project Settings > Terrabound to a DT_Rounds with FRoundRow rows, each with at least one wave)."));
 		return false;
+	case EStartRefusal::None:
+		break;
 	}
 
 	LeaksThisRound = 0;
@@ -82,6 +94,16 @@ int32 URoundManager::GetWaveCount() const
 {
 	const FRoundRow* Row = GetCurrentRoundRow();
 	return Row ? Row->Waves.Num() : 0;
+}
+
+FText URoundManager::GetRoundStatusText() const
+{
+	if (Phase == ERoundPhase::Combat)
+	{
+		return FText::Format(NSLOCTEXT("Terrabound", "RoundStatusCombat", "Round {0} · Wave {1}/{2}"),
+			RoundIndex + 1, WaveIndex + 1, GetWaveCount());
+	}
+	return FText::Format(NSLOCTEXT("Terrabound", "RoundStatusPrep", "Round {0} · Prep"), RoundIndex + 1);
 }
 
 const FRoundRow* URoundManager::GetCurrentRoundRow() const
