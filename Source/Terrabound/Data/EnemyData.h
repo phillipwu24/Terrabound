@@ -8,14 +8,15 @@
 
 class USkeletalMesh;
 class UAnimInstance;
+class UAnimSequence;
 
 /**
  * Per-enemy tuning and identity, authored as a data asset (PLAN.md 1.2) - one instance per enemy
  * type, in Content/Terrabound/Data/Enemies/. Enemies are spawned generically as AEnemyBase and
  * initialized from one of these; there is no per-enemy Blueprint.
  *
- * Every number here is a PLACEHOLDER. Only MoveSpeedHexesPerSecond is read before Phase 2 - the
- * rest is AttributeSet initialization data (stored, read by nothing until GAS exists), same
+ * Every number here is a PLACEHOLDER. Only the movement and animation fields are read before Phase 2 -
+ * the stats are AttributeSet initialization data (stored, read by nothing until GAS exists), same
  * arrangement as UChampionData.
  */
 UCLASS()
@@ -30,9 +31,23 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy")
 	TObjectPtr<USkeletalMesh> SkeletalMesh;
 
-	/** Idle only for now (PLAN.md D15); the walk clip arrives in 1.8. */
+	/**
+	 * The pack's stock ABP, unedited. It plays idle and the LevelStart spawn montage on its own; the
+	 * walk is played from C++ on top of it (PLAN.md D15).
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy")
 	TSubclassOf<UAnimInstance> AnimBlueprint;
+
+	/**
+	 * In-place walk clip (the pack's Jog_Fwd), looped as a montage on the settings' AnimMontageSlotName
+	 * while the enemy steps between hexes. None = the enemy glides in idle.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Animation")
+	TObjectPtr<UAnimSequence> WalkAnimation;
+
+	/** Play rate of WalkAnimation, tuned by eye so the feet don't slide at MoveSpeedHexesPerSecond. Placeholder. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Animation", meta = (ClampMin = "0.01"))
+	float WalkPlayRate = 1.f;
 
 	/**
 	 * Walking speed in hexes per second, not cm/s, so a HexRadius change never retunes it. 0.5 puts
@@ -40,6 +55,15 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Movement", meta = (ClampMin = "0.1"))
 	float MoveSpeedHexesPerSecond = 0.5f;
+
+	/**
+	 * Seconds a freshly spawned enemy stands on its spawn hex before its first step, while the ABP's
+	 * LevelStart montage plays, re-rated to end with the hold. It can be targeted during the hold.
+	 * 0 = walk at once. Placeholder (PLAN.md 1.8): a hold longer than the spawn interval throttles
+	 * spawning when spawn hexes are few, since the holding enemy keeps its hex.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Movement", meta = (ClampMin = "0"))
+	float SpawnHoldSeconds = 2.f;
 
 	// --- AttributeSet initialization data. Stored, read by nothing until Phase 2. ---
 

@@ -36,6 +36,7 @@ namespace WaveManagerTests
 	{
 		UEnemyData* Data = NewObject<UEnemyData>(GetTransientPackage());
 		Data->MoveSpeedHexesPerSecond = 2.f;
+		Data->SpawnHoldSeconds = 0.f;
 		return Data;
 	}
 

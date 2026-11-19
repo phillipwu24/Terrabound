@@ -5,6 +5,9 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
+#include "Animation/AnimSequence.h"
 #include "../Grid/HexGrid.h"
 #include "../TerraboundSettings.h"
 
@@ -48,6 +51,41 @@ void ABoardUnitBase::SnapToHex(const FHexCoord& Coord)
 	const FVector2D WorldPos2D = UHexCoordinateLibrary::AxialToWorld2D(Coord, Grid->GetHexRadius());
 	SetActorLocation(FVector(WorldPos2D.X, WorldPos2D.Y, 0.f));
 	CurrentCoord = Coord;
+}
+
+namespace
+{
+	constexpr float LoopBlendSeconds = 0.2f;
+	// The single section every dynamic montage gets (UAnimMontage::CreateSlotAnimationAsDynamicMontage).
+	const FName DynamicMontageSection = TEXT("Default");
+}
+
+void ABoardUnitBase::PlayLoopingAnimation(UAnimSequence* Sequence, float PlayRate)
+{
+	UAnimInstance* AnimInstance = Mesh ? Mesh->GetAnimInstance() : nullptr;
+	if (!AnimInstance || !Sequence)
+	{
+		return;
+	}
+
+	const FName SlotName = GetDefault<UTerraboundSettings>()->AnimMontageSlotName;
+	// The engine logs its own warning when the montage can't be made.
+	LoopingMontage = AnimInstance->PlaySlotAnimationAsDynamicMontage(Sequence, SlotName, LoopBlendSeconds, LoopBlendSeconds, PlayRate);
+	if (LoopingMontage)
+	{
+		// Pointing the only section at itself loops it until stopped.
+		AnimInstance->Montage_SetNextSection(DynamicMontageSection, DynamicMontageSection, LoopingMontage);
+	}
+}
+
+void ABoardUnitBase::StopLoopingAnimation()
+{
+	UAnimInstance* AnimInstance = Mesh ? Mesh->GetAnimInstance() : nullptr;
+	if (AnimInstance && LoopingMontage)
+	{
+		AnimInstance->Montage_Stop(LoopBlendSeconds, LoopingMontage);
+	}
+	LoopingMontage = nullptr;
 }
 
 void ABoardUnitBase::SetTeam(EBoardUnitTeam NewTeam)

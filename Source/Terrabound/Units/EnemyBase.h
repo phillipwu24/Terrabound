@@ -27,6 +27,10 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FOnEnemyExited, AEnemyBase*);
  * *into* - the grid and the coord agree at every moment, even while the actor is visually between
  * two hexes.
  *
+ * On entering the board it first holds its spawn hex for UEnemyData::SpawnHoldSeconds while the ABP's
+ * LevelStart montage plays, re-rated to end with the hold. While stepping it loops the data's walk
+ * clip; a hold stops the loop and the ABP falls back to idle (PLAN.md 1.8).
+ *
  * Walking only: no targeting, no attacks, no HP until Phase 2/3.
  */
 UCLASS()
@@ -48,9 +52,9 @@ public:
 	UEnemyData* GetEnemyData() const { return EnemyData; }
 
 	/**
-	 * Claims StartCoord, snaps to it and starts walking to the exit. Returns false, and does not
-	 * walk, if the hex is invalid or already held (the caller decides whether to retry later), or if
-	 * the enemy has no valid data to walk with.
+	 * Claims StartCoord, snaps to it and starts the spawn hold, after which it walks to the exit.
+	 * Returns false, and does not walk, if the hex is invalid or already held (the caller decides
+	 * whether to retry later), or if the enemy has no valid data to walk with.
 	 */
 	bool EnterBoard(const FHexCoord& StartCoord);
 
@@ -77,6 +81,9 @@ private:
 
 	void ExitBoard();
 
+	/** Sets the play rate of the ABP's spawn montage (LevelStart) so it ends when the spawn hold does. */
+	void RateSpawnMontageToHold();
+
 	UPROPERTY()
 	TObjectPtr<UEnemyData> EnemyData;
 
@@ -87,8 +94,9 @@ private:
 	FVector StepStart = FVector::ZeroVector;
 	FVector StepEnd = FVector::ZeroVector;
 	float StepProgress = 0.f;
+	float SpawnHoldRemaining = 0.f;
 
-	// Crossing-time bookkeeping, logged on exit.
+	// Crossing-time bookkeeping, logged on exit. ElapsedSeconds starts after the spawn hold.
 	float ElapsedSeconds = 0.f;
 	float HeldSeconds = 0.f;
 	int32 StepsTaken = 0;

@@ -76,4 +76,12 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, config, Category = "Star Level")
 	TArray<float> StarMeshScaleMultipliers = { 0.8f, 1.f, 1.25f };
+
+	/**
+	 * The ABP slot C++-played animations (the enemy walk; attack and death later) go through. Every
+	 * stock Paragon ABP has exactly one slot, UpperBody, which drives the whole body for our non-pawn
+	 * units (ANIMATION_FINDINGS.md); change only for a non-Paragon pack.
+	 */
+	UPROPERTY(EditAnywhere, config, Category = "Animation")
+	FName AnimMontageSlotName = TEXT("UpperBody");
 };

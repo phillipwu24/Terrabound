@@ -9,6 +9,8 @@
 
 class USkeletalMeshComponent;
 class UCapsuleComponent;
+class UAnimSequence;
+class UAnimMontage;
 
 /**
  * Which side of the board a unit belongs to. Two values only - CLAUDE.md's "Deliberately not
@@ -79,6 +81,19 @@ protected:
 	 */
 	void SetCurrentCoord(const FHexCoord& Coord) { CurrentCoord = Coord; }
 
+	/**
+	 * Loops Sequence as a dynamic montage on UTerraboundSettings::AnimMontageSlotName, until
+	 * StopLoopingAnimation. The stock Paragon ABPs never run their own locomotion for a non-pawn owner,
+	 * so C++ plays it here (PLAN.md 1.8). Replaces any loop already playing. No-op without an anim
+	 * instance (headless tests) or a sequence.
+	 */
+	void PlayLoopingAnimation(UAnimSequence* Sequence, float PlayRate);
+
+	/** Blends out the loop PlayLoopingAnimation started, if any; the ABP falls back to idle. Leaves other montages alone. */
+	void StopLoopingAnimation();
+
+	bool IsLoopingAnimationPlaying() const { return LoopingMontage != nullptr; }
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Board Unit")
 	TObjectPtr<USkeletalMeshComponent> Mesh;
 
@@ -104,6 +119,10 @@ private:
 	void ApplyTeamTint();
 
 	FHexCoord CurrentCoord;
+
+	/** The montage PlayLoopingAnimation is playing, so StopLoopingAnimation stops only that one. */
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimMontage> LoopingMontage;
 
 	EBoardUnitTeam Team = EBoardUnitTeam::Player;
 };

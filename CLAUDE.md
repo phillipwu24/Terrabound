@@ -28,8 +28,8 @@ that shoots, then blockers and aggro. See `PLAN.md`. Phase 1 tasks 1.1 (`TryOccu
 ignores units), 1.4a (`RoundManager`), 1.4b (`WaveManager`, plus a wave gap), 1.5
 (combat locks the board, not the bench) and 1.6 (enemy assets and `DT_Rounds`; spawn
 windows now count enemies spawned, not resolved) and 1.7 (crossing 14 s at 0.5 hexes/s,
-walker retired, Start key = Enter) are done; next is 1.8 (walk animation and spawn hold),
-then 1.9 (round HUD). Design revised 2026-11-17 (stationary champions, units
+walker retired, Start key = Enter) and 1.8 (walk loop played from C++, 2 s spawn hold) are
+done; next is 1.9 (round HUD), the last task of Phase 1. Design revised 2026-11-17 (stationary champions, units
 stop, rounds of waves, round-long damage) — `DESIGN.md` header.
 
 ## Build command

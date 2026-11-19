@@ -56,7 +56,7 @@ assume them; change one here first if it needs revisiting.
 | D11 | Unit cap | **Flat config value**, placeholder **10**, marked unresolved, on `DA_BoardConfig`. It counts board champions only. A cap of 6 or less makes a full-row wall impossible, so tune it down during 4.2. The growth formula is deferred. |
 | D12 | Where do spawn hexes live? | **A level-placed C++ actor** holding the array, not a level Blueprint graph. The array is data on the placed instance and needs no graph. A player-zone entry is an error: logged, its spawn flag cleared, and the hex kept a normal player hex. |
 | D13 | Round data shape | **`DT_Rounds`**, one row per round. Each row holds its own list of waves (3 each for now; there is no separate waves-per-round number), and each wave a roster of `{EnemyData, Count, SpawnWindow}` with `SpawnWindow` one of Early / Any / Late. Rounds past the table repeat the last row. The endless scaling formula is out of scope. |
-| D14 | Spawn timing | **One randomized timer per wave, not per hex.** The first enemy of a wave spawns at once; after each spawn the next delay is drawn uniformly from `[MinSpawnInterval, MaxSpawnInterval]` (placeholders **3.0 / 4.0 s** in `MainBoard`, tuned by the user 2026-11-19 from 1.0 / 2.0 s, which felt far too fast). When the delay has elapsed, a spawn hex is free and an eligible entry exists, that entry spawns on a **random free spawn hex**; otherwise the timer stays elapsed. The range lives on `ASpawnHexConfig` (level configuration, next to the hexes), tuned in 1.7 against the 3.5 s crossing time. A per-wave override is not added until play asks. |
+| D14 | Spawn timing | **One randomized timer per wave, not per hex.** The first enemy of a wave spawns at once; after each spawn the next delay is drawn uniformly from `[MinSpawnInterval, MaxSpawnInterval]` (placeholders **3.0 / 4.0 s** in `MainBoard`, tuned by the user 2026-11-19 from 1.0 / 2.0 s, which felt far too fast). When the delay has elapsed, a spawn hex is free and an eligible entry exists, that entry spawns on a **random free spawn hex**; otherwise the timer stays elapsed. The range lives on `ASpawnHexConfig` (level configuration, next to the hexes), tuned in 1.7 against the 14 s crossing time. A per-wave override is not added until play asks. |
 | D15 | Animation | **Walk, basic attack and death are in scope** (1.8, 3.8), played from C++ as montages on the `UpperBody` slot that every stock Paragon ABP already has (`ANIMATION_FINDINGS.md`). **A spawning enemy holds still for a per-enemy `SpawnHoldSeconds`** while the ABP's own `LevelStart` montage plays, sped up from C++ to fit the hold, and only then starts walking (1.8; the user's call 2026-11-19, replacing "the walk overrides `LevelStart`"). No new or edited Animation Blueprints; the Paragon folders stay as imported. The clips are fields you assign on the data assets. Ability animations wait for mana. |
 | D16 | When does an attack's damage land? | **After a per-unit `AttackHitDelaySeconds`** (a data field, tuned by eye), because no montage in the packs has an impact notify to hang it on. It fizzles if the target died or became untargetable during the delay. Phase 2 stays instant until 3.8 adds it. |
 | D17 | Round-start heal | **`RoundManager` applies an instant heal-to-full GameplayEffect to every living board champion on entering Prep** (bench champions take no damage). It is an effect on surviving actors, never a reset or respawn. Dead champions stay dead (D4). Built in 2.7. |
@@ -69,7 +69,7 @@ assume them; change one here first if it needs revisiting.
 ## Carried forward from Checkpoint 1
 
 - **Crossing time:** empty board is 7 hexes; at **2 hexes/s** that is **3.5 s**. This seeds
-  `EnemyData` speed and the spawn timer (D14). `OccupiedTileCost` (100, on `DA_BoardConfig`) is
+  `EnemyData` speed and the spawn timer (D14); since 1.7 it is 0.5 hexes/s and 14 s. `OccupiedTileCost` (100, on `DA_BoardConfig`) is
   retired by 1.2b (D18).
 - **`UHexGrid::SetOccupant` overwrites.** It does not check occupancy, which is right for
   placement and wrong for a unit racing another into a hex. Task 1.1 adds a claim that fails.
@@ -455,6 +455,23 @@ the ABP starts at spawn, and the walk takes over cleanly once it ends; and the l
 
 **Done when:** enemies play their spawn animation in place for `SpawnHoldSeconds`, then visibly
 walk their route, and stop walking when they hold or exit.
+
+**Done (2026-11-19; PIE on `MainBoard`, checked by the user).** As built: `ABoardUnitBase` has
+protected `PlayLoopingAnimation` / `StopLoopingAnimation`, which play a dynamic montage on
+`AnimMontageSlotName` and loop it by pointing its single `Default` section at itself (3.8 reuses
+them). `AEnemyBase` re-rates the active montage (the ABP's `LevelStart`) in `EnterBoard` to
+`length / SpawnHoldSeconds`, takes no step until the hold has elapsed (leftover time carries into
+the first step), starts the walk loop when a step begins, and stops it on a hold or exit.
+`SpawnHoldSeconds` is **2 s** (the user's pick, also the C++ default); `WalkPlayRate` is tuned per
+asset by eye.
+- **Spike:** all three held. The montage on `UpperBody` drives the full body, `LevelStart` was
+  found and re-rated (rate 2.50 for Grux's 5.00 s clip, 2.43 for Belica's 4.87 s), and the loop
+  is seamless with no fallback needed. Only Grux and LtBelica spawned in the logged rounds; Kwang
+  and Serath use the same code path and slot.
+- **Crossing time is unchanged at 14.00 s.** The log now reports the hold separately
+  ("crossed the board in 14.00s after a 2.00s spawn hold"), so the figure stays comparable to 1.7.
+- **Tests:** new `EnemyBase.SpawnHold` (mutation-checked); the other enemy and wave tests set the
+  hold to 0. 32/32 pass.
 
 ### 1.9 Round HUD (`Waves/`, UI)
 **[C++ + Editor]** Added 2026-11-19 at the user's request.

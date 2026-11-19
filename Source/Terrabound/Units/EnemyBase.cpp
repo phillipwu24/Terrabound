@@ -2,6 +2,8 @@
 
 #include "EnemyBase.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
 #include "Engine/World.h"
 #include "../Data/EnemyData.h"
 #include "../Grid/HexGrid.h"
@@ -72,8 +74,31 @@ bool AEnemyBase::EnterBoard(const FHexCoord& StartCoord)
 	ElapsedSeconds = 0.f;
 	HeldSeconds = 0.f;
 	StepsTaken = 0;
+	SpawnHoldRemaining = EnemyData->SpawnHoldSeconds;
+	RateSpawnMontageToHold();
 	bWalking = true;
 	return true;
+}
+
+void AEnemyBase::RateSpawnMontageToHold()
+{
+	UAnimInstance* AnimInstance = Mesh ? Mesh->GetAnimInstance() : nullptr;
+	if (!AnimInstance || SpawnHoldRemaining <= 0.f)
+	{
+		// No hold: the first step's walk loop takes over the slot from the spawn montage.
+		return;
+	}
+
+	// The ABP starts its spawn montage at its own BeginPlay, which has already run by now.
+	UAnimMontage* SpawnMontage = AnimInstance->GetCurrentActiveMontage();
+	if (!SpawnMontage)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Enemy '%s': no spawn montage playing to fit to the %.2fs spawn hold."),
+			*EnemyData->DisplayName.ToString(), SpawnHoldRemaining);
+		return;
+	}
+
+	AnimInstance->Montage_SetPlayRate(SpawnMontage, SpawnMontage->GetPlayLength() / SpawnHoldRemaining);
 }
 
 void AEnemyBase::Tick(float DeltaSeconds)
@@ -96,9 +121,22 @@ void AEnemyBase::AdvanceMovement(float DeltaSeconds)
 		return;
 	}
 
-	const float HexesPerSecond = EnemyData->MoveSpeedHexesPerSecond;
-	ElapsedSeconds += DeltaSeconds;
 	float Remaining = DeltaSeconds;
+
+	// The spawn hold comes first; time left over at its end carries into the first step.
+	if (SpawnHoldRemaining > 0.f)
+	{
+		const float HoldUsed = FMath::Min(SpawnHoldRemaining, Remaining);
+		SpawnHoldRemaining -= HoldUsed;
+		Remaining -= HoldUsed;
+		if (Remaining <= 0.f)
+		{
+			return;
+		}
+	}
+
+	const float HexesPerSecond = EnemyData->MoveSpeedHexesPerSecond;
+	ElapsedSeconds += Remaining;
 
 	while (Remaining > 0.f)
 	{
@@ -114,8 +152,14 @@ void AEnemyBase::AdvanceMovement(float DeltaSeconds)
 
 			if (!TryBeginNextStep(*Grid))
 			{
+				StopLoopingAnimation();
 				HeldSeconds += Remaining;
 				return;
+			}
+			// Consecutive steps keep the loop running rather than restarting it.
+			if (!IsLoopingAnimationPlaying())
+			{
+				PlayLoopingAnimation(EnemyData->WalkAnimation, EnemyData->WalkPlayRate);
 			}
 		}
 
@@ -183,8 +227,9 @@ void AEnemyBase::LogHoldOnce(const FString& Reason)
 void AEnemyBase::ExitBoard()
 {
 	bWalking = false;
-	UE_LOG(LogTemp, Display, TEXT("Enemy '%s': crossed the board in %.2fs (%d hexes at %.2f hexes/s, %.2fs held)."),
-		*EnemyData->DisplayName.ToString(), ElapsedSeconds, StepsTaken, EnemyData->MoveSpeedHexesPerSecond, HeldSeconds);
+	StopLoopingAnimation();
+	UE_LOG(LogTemp, Display, TEXT("Enemy '%s': crossed the board in %.2fs after a %.2fs spawn hold (%d hexes at %.2f hexes/s, %.2fs held)."),
+		*EnemyData->DisplayName.ToString(), ElapsedSeconds, EnemyData->SpawnHoldSeconds, StepsTaken, EnemyData->MoveSpeedHexesPerSecond, HeldSeconds);
 
 	OnEnemyExited.Broadcast(this);
 	// Destroyed() releases the tile.

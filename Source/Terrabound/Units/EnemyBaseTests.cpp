@@ -30,11 +30,13 @@ namespace EnemyBaseTests
 		return UHexCoordinateLibrary::OffsetToAxial(Col, Row);
 	}
 
-	static AEnemyBase* SpawnEnemy(UWorld* World)
+	/** No spawn hold unless a test asks for one, so crossing times are rows / speed. */
+	static AEnemyBase* SpawnEnemy(UWorld* World, float SpawnHoldSeconds = 0.f)
 	{
 		UEnemyData* Data = NewObject<UEnemyData>(GetTransientPackage());
 		Data->DisplayName = FText::FromString(TEXT("TestEnemy"));
 		Data->MoveSpeedHexesPerSecond = Speed;
+		Data->SpawnHoldSeconds = SpawnHoldSeconds;
 
 		AEnemyBase* Enemy = World->SpawnActor<AEnemyBase>();
 		Enemy->InitializeFromEnemyData(Data);
@@ -358,6 +360,65 @@ bool FEnemyBaseOccupiedStartTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Enemy cannot enter an occupied hex"), Enemy->EnterBoard(Start));
 	TestTrue(TEXT("Holder keeps the tile"), Grid->GetTile(Start)->Occupant.Get() == Holder);
 	TestEqual(TEXT("Refused enemy holds no tile"), CountTilesHeldBy(*Grid, Enemy), 0);
+
+	return true;
+}
+
+/**
+ * Spawn hold (PLAN.md 1.8): an entering enemy keeps its spawn hex and takes no step until
+ * SpawnHoldSeconds have passed, then walks; the hold adds exactly its length to the crossing.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEnemyBaseSpawnHoldTest, "Terrabound.Units.EnemyBase.SpawnHold", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FEnemyBaseSpawnHoldTest::RunTest(const FString& Parameters)
+{
+	using namespace HexGridTests;
+	using namespace EnemyBaseTests;
+
+	FScopedGridWorld TestWorld;
+	UHexGrid* Grid = TestWorld.GetGrid();
+	if (!TestNotNull(TEXT("HexGrid subsystem exists"), Grid) || !TestTrue(TEXT("Grid generated tiles"), Grid->GetTileCount() > 0))
+	{
+		return false;
+	}
+
+	constexpr float Hold = 0.5f;
+	const int32 BackRow = RowOf(Grid->GetBackRowCoords()[0]);
+	const FHexCoord Start = AtOffset(3, 0);
+	AEnemyBase* Enemy = SpawnEnemy(TestWorld.GetWorld(), Hold);
+	int32 ExitCount = 0;
+	Enemy->OnEnemyExited.AddLambda([&](AEnemyBase*) { ++ExitCount; });
+
+	if (!TestTrue(TEXT("Enemy enters an empty far-edge tile"), Enemy->EnterBoard(Start)))
+	{
+		return false;
+	}
+
+	float Elapsed = 0.f;
+	// Stop a few ticks short of the hold.
+	for (; Elapsed < Hold - 5.f * Dt; Elapsed += Dt)
+	{
+		Enemy->AdvanceMovement(Dt);
+	}
+	TestTrue(TEXT("Enemy still claims its spawn hex during the hold"), Enemy->GetCurrentCoord() == Start);
+	TestTrue(TEXT("Spawn hex is still held by the enemy"), Grid->GetTile(Start)->Occupant.Get() == Enemy);
+	TestEqual(TEXT("Enemy holds exactly one tile during the hold"), CountTilesHeldBy(*Grid, Enemy), 1);
+
+	// A few ticks past the hold the first step has begun (and claimed the next hex).
+	for (; Elapsed < Hold + 5.f * Dt; Elapsed += Dt)
+	{
+		Enemy->AdvanceMovement(Dt);
+	}
+	TestFalse(TEXT("Enemy has begun its first step after the hold"), Enemy->GetCurrentCoord() == Start);
+
+	for (int32 Tick = 0; Tick < 1200 && ExitCount == 0; ++Tick)
+	{
+		Enemy->AdvanceMovement(Dt);
+		Elapsed += Dt;
+	}
+	TestEqual(TEXT("Exit event fires exactly once"), ExitCount, 1);
+	TestTrue(FString::Printf(TEXT("Crossing time %.2fs is the %.1fs hold plus %d hexes at %.1f hexes/s"), Elapsed, Hold, BackRow, Speed),
+		FMath::IsNearlyEqual(Elapsed, Hold + BackRow / Speed, 0.1f));
 
 	return true;
 }
