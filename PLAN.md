@@ -62,7 +62,7 @@ assume them; change one here first if it needs revisiting.
 | D17 | Round-start heal | **`RoundManager` applies an instant heal-to-full GameplayEffect to every living board champion on entering Prep** (bench champions take no damage). It is an effect on surviving actors, never a reset or respawn. Dead champions stay dead (D4). Built in 2.7. |
 | D18 | Route planning and units | **The search ignores units entirely** (`CLAUDE.md` "Terrain redirects. Units stop."). `OccupiedTileCost` is removed from `FHexPathfinder`, `UBoardConfig` and `UHexGrid` (1.2b). An enemy whose next step is a champion adopts it as target (3.2); one whose next step holds another enemy waits (default; an equally short free alternative step is the first fix if queues look bad). |
 | D19 | Who owns round flow? | **Two world subsystems.** `URoundManager` (1.4a): phase (`Prep`/`Combat`), `StartRound`, round index, `DT_Rounds` lookup, leak counters, the prep heal. `UWaveManager` (1.4b): the current wave — roster, progress, spawn windows, spawn timer — and tells `RoundManager` when the wave resolves. |
-| D20 | Spawn windows | **Progress = resolved (dead or exited) ÷ roster size.** Early is open while progress < `EarlyWindowEnd` (placeholder 0.10), Late once progress ≥ `LateWindowStart` (placeholder 0.95) **or once every non-Late enemy of the wave has resolved** (added in 1.4b: Late entries above 5% of a roster could otherwise hold progress below the threshold forever), Any always. An Early entry still unspawned when its window closes becomes Any, so no entry is stranded. Thresholds live in `UTerraboundSettings` (project-wide wave rules, beside the star multipliers). **Order (1.4b):** Early entries are first in line while their window is open; otherwise the next enemy is uniformly random among the pending enemies (an entry with Count 3 is three times as likely). An enemy counts as resolved when its actor is destroyed (exit today, death from Phase 2). |
+| D20 | Spawn windows | **Progress = spawned ÷ roster size** (revised 2026-11-19 at the user's request after 1.6: it was resolved ÷ roster size, which made Late enemies wait for the rest of the wave to die or leak). Early is open while progress < `EarlyWindowEnd` (placeholder 0.10), Late once progress ≥ `LateWindowStart` (placeholder 0.95) **or once every non-Late enemy of the wave has spawned** (added in 1.4b: Late entries above 5% of a roster could otherwise hold progress below the threshold forever; under spawned counting this fallback nearly always fires first, and `LateWindowStart` is kept anyway), Any always. An Early entry still unspawned when its window closes becomes Any, so no entry is stranded. Thresholds live in `UTerraboundSettings` (project-wide wave rules, beside the star multipliers). **Order (1.4b):** Early entries are first in line while their window is open; otherwise the next enemy is uniformly random among the pending enemies (an entry with Count 3 is three times as likely). An enemy counts as resolved when its actor is destroyed (exit today, death from Phase 2); resolution decides only when the wave ends, not the windows. |
 
 ---
 
@@ -305,7 +305,8 @@ test world logs a "no RoundsTable" warning until 1.6 creates `DT_Rounds`.
   it on a random free spawn hex via `TryOccupy`; else stay elapsed. Spawn hexes are read from the
   grid's flags (set by 1.3); only the delay range is read from the actor.
 - **Progress and windows (D20):** progress = resolved ÷ roster size, where resolved counts deaths
-  and exits. Early / Any / Late eligibility as in D20, with a missed Early entry becoming Any.
+  and exits (revised 2026-11-19 to spawned ÷ roster size; see D20). Early / Any / Late eligibility
+  as in D20, with a missed Early entry becoming Any.
 - **Resolution:** the wave is resolved when its roster is fully spawned and none of its enemies is
   alive; it then tells `RoundManager`.
 - **Debug:** `WaveDump` (roster left, progress, timer).
@@ -335,6 +336,11 @@ Approved additions:
 
 Tests `Terrabound.Waves.WaveManager.Timer`, `.Occupancy`, `.Exits`, `.Early` and `.Late` are
 mutation-checked. `DT_Rounds` exists with that one round; 1.6 completes it.
+
+**Revised 2026-11-19 (after 1.6):** progress counts spawned enemies, not resolved ones (D20), so a
+Late entry follows the rest of its wave instead of waiting for it to die or leak. A skipped roster
+entry now counts as spawned. `GetResolvedCount` became `GetSpawnedCount`, and `WaveDump` prints it.
+`.Exits`, `.Early` and `.Late` were rewritten for the new rule and mutation-checked again.
 
 
 ### 1.5 Combat locks the board, not the bench (`Input/`, `Economy/`, `Waves/`)
@@ -374,13 +380,18 @@ and point `UTerraboundSettings` at it.
 
 **Done when:** `StartRound` in PIE spawns round 1's waves from data, one after another.
 
+**Done (2026-11-19; PIE-verified by the user).** Playing it led to the D20 revision: Late entries
+now wait for the rest of their wave to spawn, not to die or leak.
+
 ### 1.7 Measure and retire the walker
 **[C++ + Editor]**
 Watch a real round. Record the crossing time from the enemy's own log against the 3.5 s from
 Checkpoint 1, and how each wave enters against the spawn timer (one lump, or a stream with an
 opening, a middle and a tail). Tune the delay range on the Spawn Hex Config and wave sizes in
-`DT_Rounds`. Then delete `Debug/DebugPathWalker.*` and the `SpawnPathWalker` command; keep
-`FHexPathfinder` and its tests.
+`DT_Rounds`, and the wave gap (`WaveGapSeconds`, placeholder 3 s). Then delete
+`Debug/DebugPathWalker.*` and the `SpawnPathWalker` command; keep `FHexPathfinder` and its tests.
+Also add the **Start key** (D2), deferred from 1.4a: an input binding in `BoardPlayerController`
+that calls `URoundManager::StartRound`, plus the input mapping in the editor.
 
 **Expected, not a bug:** since routing ignores units (1.2b), any champion on an enemy's route
 stops it here, and the enemies behind queue up, because nothing fights yet. Test on an empty board
@@ -680,7 +691,7 @@ Record the answers here, as Checkpoint 1's 7.1 recorded crossing time. These are
 - [ ] `TryOccupy` is atomic; no test or PIE run ever puts two units on one tile
 - [ ] Route planning ignores units; `OccupiedTileCost` is gone; occupancy is enforced by the step
 - [ ] A wave trickles in on one randomized timer from random free spawn hexes, with spawn windows
-      gated on progress (dead or exited); a missed Early entry becomes Any
+      gated on progress (share spawned); a missed Early entry becomes Any
 - [ ] A wave resolves when its roster is spawned and none of it is alive; the next wave starts only
       then (after the wave gap), and the round ends after its last wave. No prep timer, no
       stuck-wave timer

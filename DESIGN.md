@@ -512,9 +512,11 @@ spawns or which spawn hex it uses; both come from the spawn timer and from which
 spawn hexes are free at the time. The roster is the design; the delivery varies
 from run to run.
 
-**Wave progress** is the share of the roster **resolved** — dead or exited: 0%
-when the wave begins, 50% once half of it is gone. Exits count, so a leak can never
-freeze progress short of a threshold. Progress gates *when* a roster entry is
+**Wave progress** is the share of the roster already **spawned**: 0% when the
+wave begins, 50% once half of it has entered the board. It does not wait on
+deaths or leaks, so a late enemy follows the rest of its wave onto the board
+instead of waiting for the board to clear (revised 2026-11-19; progress used to
+count enemies resolved, dead or exited). Progress gates *when* a roster entry is
 allowed to spawn. Each entry carries a spawn window:
 
 - **Early** — first in line while progress is low (e.g. under ~10%). An early
@@ -523,7 +525,7 @@ allowed to spawn. Each entry carries a spawn window:
   never strand an enemy that missed its window.
 - **Any** — whenever a spawn is due.
 - **Late** — only once progress is high (e.g. over ~95%), or once every non-late
-  enemy of the wave is resolved. Without the second condition, a roster whose
+  enemy of the wave has spawned. Without the second condition, a roster whose
   late entries exceed the share above the threshold could never reach it, and the
   wave would hang. This is the same "nothing is stranded" rule as for early entries.
 

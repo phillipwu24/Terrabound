@@ -25,9 +25,10 @@ placement, trait counter, pathfinder, plus star-up (3-copy merge) added afterwar
 Checkpoint 2 is the current plan: enemies walking, then GAS and the first champion
 that shoots, then blockers and aggro. See `PLAN.md`. Phase 1 tasks 1.1 (`TryOccupy`) and
 1.2 (`EnemyData`, `EnemyBase` walking), 1.3 (spawn hex config), 1.2b (route planning
-ignores units), 1.4a (`RoundManager`), 1.4b (`WaveManager`, plus a wave gap) and 1.5
-(combat locks the board, not the bench) are done; next is 1.6 (enemy assets and
-`DT_Rounds`, editor work). Design revised 2026-11-17 (stationary champions, units
+ignores units), 1.4a (`RoundManager`), 1.4b (`WaveManager`, plus a wave gap), 1.5
+(combat locks the board, not the bench) and 1.6 (enemy assets and `DT_Rounds`; spawn
+windows now count enemies spawned, not resolved) are done; next is 1.7 (measure, tune,
+retire the walker, Start key). Design revised 2026-11-17 (stationary champions, units
 stop, rounds of waves, round-long damage) — `DESIGN.md` header.
 
 ## Build command
@@ -170,10 +171,12 @@ as rows `BoardDepth - PlaceableRowCount` through `BoardDepth - 1`.
   between waves.
 - **A wave is a fixed roster.** Spawn timing and which spawn hex each enemy uses
   are not authored.
-- **Wave progress** = share of the roster resolved (dead **or exited**, 0–100%).
-  Each roster entry has a spawn window — early, any, or late — gated on progress.
-  An early entry that misses its window becomes any, so no entry can be stranded.
-  Thresholds are placeholder config.
+- **Wave progress** = share of the roster already **spawned** (0–100%), not
+  resolved — a late entry never waits for earlier enemies to die or leak
+  (revised 2026-11-19). Each roster entry has a spawn window — early, any, or
+  late — gated on progress. An early entry that misses its window becomes any,
+  and late also opens once every non-late entry has spawned, so no entry can be
+  stranded. Thresholds are placeholder config.
 - **Spawn pacing: one randomized timer per wave, not per hex.** The first enemy
   spawns immediately; after each spawn a delay is drawn from
   `[MinSpawnInterval, MaxSpawnInterval]`. When it has elapsed, a spawn hex is free,
@@ -564,9 +567,9 @@ copy of live tile state can, and is forbidden.
 That generation-time array is built in Checkpoint 2 (`PLAN.md` 1.3) as a
 level-placed actor (`ASpawnHexConfig`) holding the array; at startup it calls the
 grid's `BlueprintCallable` setter for each hex. The actor and the setter are both
-legitimate; neither puts tile state in a Blueprint. The same actor will also hold
-the spawn delay range (`PLAN.md` 1.4b) — level configuration, read by
-`WaveManager`, never written back.
+legitimate; neither puts tile state in a Blueprint. The same actor also holds the
+spawn delay range and the wave gap (`PLAN.md` 1.4b, D0) — level configuration,
+read by `WaveManager` at each wave start, never written back.
 
 **When unsure, ask.** Name the specific variable and ask whether it should be
 exposed. Do not guess in either direction.
