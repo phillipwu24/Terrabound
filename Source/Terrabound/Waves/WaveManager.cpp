@@ -16,7 +16,6 @@ void UWaveManager::StartWave(const FWaveDefinition& Wave, bool bFirstWaveOfRound
 	Pending.Reset();
 	Alive.Reset();
 	RosterSize = 0;
-	ResolvedCount = 0;
 
 	for (const FWaveRosterEntry& Entry : Wave.Roster)
 	{
@@ -27,9 +26,8 @@ void UWaveManager::StartWave(const FWaveDefinition& Wave, bool bFirstWaveOfRound
 		RosterSize += Entry.Count;
 		if (Entry.Enemy.IsNull())
 		{
-			// Counted as resolved rather than left pending, so a data mistake can't hang the wave.
+			// Never pending, so it counts as spawned: a data mistake can't hang the wave or a window.
 			UE_LOG(LogTemp, Error, TEXT("WaveManager: a roster entry has no enemy set - its %d enemies are skipped."), Entry.Count);
-			ResolvedCount += Entry.Count;
 			continue;
 		}
 		for (int32 Copy = 0; Copy < Entry.Count; ++Copy)
@@ -76,7 +74,7 @@ TStatId UWaveManager::GetStatId() const
 
 float UWaveManager::GetProgress() const
 {
-	return RosterSize > 0 ? static_cast<float>(ResolvedCount) / RosterSize : 1.f;
+	return RosterSize > 0 ? static_cast<float>(GetSpawnedCount()) / RosterSize : 1.f;
 }
 
 int32 UWaveManager::GetPendingCountInWindow(ESpawnWindow Window) const
@@ -154,18 +152,11 @@ bool UWaveManager::IsLateOpen() const
 		return true;
 	}
 
-	// Or once every non-Late enemy has resolved: with Late entries making up more than the share
+	// Or once every non-Late enemy has spawned: with Late entries making up more than the share
 	// above the threshold, progress could otherwise never reach it and the wave would hang.
 	for (const FPendingSpawn& Spawn : Pending)
 	{
 		if (Spawn.Window != ESpawnWindow::Late)
-		{
-			return false;
-		}
-	}
-	for (const FAliveEnemy& Enemy : Alive)
-	{
-		if (Enemy.Window != ESpawnWindow::Late)
 		{
 			return false;
 		}
@@ -213,7 +204,6 @@ bool UWaveManager::TrySpawn()
 	{
 		UE_LOG(LogTemp, Error, TEXT("WaveManager: couldn't load enemy %s - skipped."), *Spawn.Enemy.ToString());
 		Pending.RemoveAtSwap(PendingIndex);
-		++ResolvedCount;
 		return false;
 	}
 
@@ -235,7 +225,7 @@ bool UWaveManager::TrySpawn()
 
 	Enemy->OnEnemyExited.AddUObject(this, &UWaveManager::HandleEnemyExited);
 	Enemy->OnDestroyed.AddDynamic(this, &UWaveManager::HandleEnemyDestroyed);
-	Alive.Add({ TObjectKey<AActor>(Enemy), Spawn.Window });
+	Alive.Add(TObjectKey<AActor>(Enemy));
 	Pending.RemoveAtSwap(PendingIndex);
 
 	UE_LOG(LogTemp, Display, TEXT("WaveManager: spawned %s at %s - %d pending, %d alive."), *Data->GetName(), *Hex.ToString(), Pending.Num(), Alive.Num());
@@ -259,15 +249,10 @@ void UWaveManager::CheckResolved()
 
 void UWaveManager::HandleEnemyDestroyed(AActor* DestroyedActor)
 {
-	const TObjectKey<AActor> Key(DestroyedActor);
-	const int32 Removed = Alive.RemoveAll([&Key](const FAliveEnemy& Enemy) { return Enemy.Key == Key; });
-	if (Removed == 0)
+	if (Alive.Remove(TObjectKey<AActor>(DestroyedActor)) > 0)
 	{
-		return;
+		CheckResolved();
 	}
-
-	ResolvedCount += Removed;
-	CheckResolved();
 }
 
 void UWaveManager::HandleEnemyExited(AEnemyBase* Enemy)

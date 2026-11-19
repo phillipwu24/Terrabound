@@ -44,10 +44,10 @@ public:
 	TSoftObjectPtr<UDataTable> RoundsTable;
 
 	/**
-	 * PLACEHOLDERS (D20). Wave progress is the share of the roster resolved (dead or exited). Early
-	 * entries are first in line while progress is below EarlyWindowEnd, and plain Any after. Late
-	 * entries wait until progress reaches LateWindowStart, or until every non-Late enemy of the wave
-	 * has resolved. Read by UWaveManager.
+	 * PLACEHOLDERS (D20). Wave progress is the share of the roster already spawned. Early entries
+	 * are first in line while progress is below EarlyWindowEnd, and plain Any after. Late entries
+	 * wait until progress reaches LateWindowStart, or until every non-Late enemy of the wave has
+	 * spawned. Read by UWaveManager.
 	 */
 	UPROPERTY(EditAnywhere, config, Category = "Waves", meta = (ClampMin = "0", ClampMax = "1"))
 	float EarlyWindowEnd = 0.10f;

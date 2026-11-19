@@ -211,8 +211,8 @@ bool FWaveManagerOccupancyTest::RunTest(const FString& Parameters)
 }
 
 /**
- * Exits (PLAN.md 1.4b, D20): an exit is reported to RoundManager as a leak and counts toward
- * progress, and the wave resolves once every enemy has exited.
+ * Exits (PLAN.md 1.4b, D20 revised 2026-11-19): an exit is reported to RoundManager as a leak, progress
+ * counts spawns rather than exits, and the wave resolves once every enemy has exited.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWaveManagerExitsTest, "Terrabound.Waves.WaveManager.Exits", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
@@ -231,6 +231,8 @@ bool FWaveManagerExitsTest::RunTest(const FString& Parameters)
 	FWaveDefinition Wave;
 	Wave.Roster.Add(MakeEntry(MakeEnemyData(), 2, ESpawnWindow::Any));
 	Waves->StartWave(Wave, true);
+	Waves->AdvanceSpawning(Dt);
+	TestEqual(TEXT("One of two spawned makes progress one half"), Waves->GetProgress(), 0.5f);
 
 	float ProgressAtFirstLeak = -1.f;
 	for (int32 Tick = 0; Tick < 900 && Waves->IsWaveActive(); ++Tick)
@@ -242,9 +244,9 @@ bool FWaveManagerExitsTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	TestEqual(TEXT("The first exit makes progress one half"), ProgressAtFirstLeak, 0.5f);
+	// Both have spawned long before the first crosses, so the exit itself adds nothing.
+	TestEqual(TEXT("Progress is 1 at the first exit, from spawns alone"), ProgressAtFirstLeak, 1.f);
 	TestEqual(TEXT("Both exits are reported as leaks"), Rounds->GetLeaksTotal(), 2);
-	TestEqual(TEXT("Progress reaches 1"), Waves->GetProgress(), 1.f);
 	TestFalse(TEXT("The wave resolves once every enemy has exited"), Waves->IsWaveActive());
 
 	return true;
@@ -288,7 +290,8 @@ bool FWaveManagerEarlyTest::RunTest(const FString& Parameters)
 	}
 	TestTrue(TEXT("The Early entry spawns first while its window is open"), bEarlyAlwaysFirst);
 
-	// Missed window: two Early; once the first resolves, progress is past the window.
+	// Missed window: two Early; once the first has spawned, progress is past the window. The first
+	// is then destroyed only to free the one spawn hex.
 	FWaveDefinition AllEarly;
 	AllEarly.Roster.Add(MakeEntry(EarlyData, 2, ESpawnWindow::Early));
 	Waves->StartWave(AllEarly, true);
@@ -298,8 +301,8 @@ bool FWaveManagerEarlyTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	TestTrue(TEXT("Progress is past the Early window on the spawn alone"), Waves->GetProgress() >= 0.5f);
 	Enemies[0]->Destroy();
-	TestTrue(TEXT("Progress is past the Early window"), Waves->GetProgress() >= 0.5f);
 
 	Run(*Waves, TestWorld.GetWorld(), 0.5f, false);
 	Enemies = GetEnemies(TestWorld.GetWorld());
@@ -314,8 +317,9 @@ bool FWaveManagerEarlyTest::RunTest(const FString& Parameters)
 }
 
 /**
- * Late window (PLAN.md 1.4b, D20): a Late entry waits while any non-Late enemy is unresolved, and
- * opens once they all are, even though progress is still far below LateWindowStart.
+ * Late window (PLAN.md 1.4b, D20 revised 2026-11-19): a Late entry waits while any non-Late enemy is
+ * still to spawn, and opens once they all have, while they are still alive and progress is below
+ * LateWindowStart.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWaveManagerLateTest, "Terrabound.Waves.WaveManager.Late", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
@@ -324,7 +328,7 @@ bool FWaveManagerLateTest::RunTest(const FString& Parameters)
 	using namespace WaveManagerTests;
 
 	FScopedGridWorld TestWorld;
-	UWaveManager* Waves = SetUp(*this, TestWorld, { AtOffset(1, 0), AtOffset(5, 0) }, 0.1f);
+	UWaveManager* Waves = SetUp(*this, TestWorld, { AtOffset(1, 0), AtOffset(3, 0), AtOffset(5, 0) }, 0.1f);
 	if (!Waves)
 	{
 		return false;
@@ -333,30 +337,33 @@ bool FWaveManagerLateTest::RunTest(const FString& Parameters)
 	UEnemyData* AnyData = MakeEnemyData();
 	UEnemyData* LateData = MakeEnemyData();
 	FWaveDefinition Wave;
-	Wave.Roster.Add(MakeEntry(AnyData, 1, ESpawnWindow::Any));
+	Wave.Roster.Add(MakeEntry(AnyData, 2, ESpawnWindow::Any));
 	Wave.Roster.Add(MakeEntry(LateData, 1, ESpawnWindow::Late));
 	Waves->StartWave(Wave, true);
 
-	Run(*Waves, TestWorld.GetWorld(), 1.f, false);
+	// Spawns at 0 s and 0.1 s: both must be the Any enemies, with the Late one held back.
+	Run(*Waves, TestWorld.GetWorld(), 0.15f, false);
 	TArray<AEnemyBase*> Enemies = GetEnemies(TestWorld.GetWorld());
-	if (!TestEqual(TEXT("Only one enemy spawns while the Any enemy is alive"), Enemies.Num(), 1))
+	if (!TestEqual(TEXT("Two enemies spawned"), Enemies.Num(), 2))
 	{
 		return false;
 	}
-	TestTrue(TEXT("It is the Any enemy"), Enemies[0]->GetEnemyData() == AnyData);
-	TestEqual(TEXT("The Late enemy waits"), Waves->GetPendingCountInWindow(ESpawnWindow::Late), 1);
-
-	Enemies[0]->Destroy();
+	TestTrue(TEXT("Both are the Any enemies"), Enemies[0]->GetEnemyData() == AnyData && Enemies[1]->GetEnemyData() == AnyData);
+	TestEqual(TEXT("The Late enemy waited"), Waves->GetPendingCountInWindow(ESpawnWindow::Late), 1);
 	TestTrue(TEXT("Progress is below LateWindowStart"), Waves->GetProgress() < 0.95f);
 
-	Run(*Waves, TestWorld.GetWorld(), 0.5f, false);
+	// Nothing is destroyed: the Late enemy needs only the others to have spawned.
+	Run(*Waves, TestWorld.GetWorld(), 0.2f, false);
 	Enemies = GetEnemies(TestWorld.GetWorld());
-	if (!TestEqual(TEXT("The Late enemy spawns once every non-Late enemy has resolved"), Enemies.Num(), 1))
+	if (!TestEqual(TEXT("The Late enemy spawns while the others are still alive"), Enemies.Num(), 3))
 	{
 		return false;
 	}
-	TestTrue(TEXT("It is the Late enemy"), Enemies[0]->GetEnemyData() == LateData);
-	Enemies[0]->Destroy();
+	TestEqual(TEXT("Nothing left pending"), Waves->GetPendingCount(), 0);
+	for (AEnemyBase* Enemy : Enemies)
+	{
+		Enemy->Destroy();
+	}
 	TestFalse(TEXT("The wave resolves"), Waves->IsWaveActive());
 
 	return true;

@@ -652,9 +652,9 @@ namespace
 			UE_LOG(LogTemp, Error, TEXT("WaveDump: no WaveManager subsystem for this world."));
 			return;
 		}
-		UE_LOG(LogTemp, Display, TEXT("WaveDump: %s, progress %.0f%% (%d of %d resolved), pending %d (early %d / any %d / late %d), alive %d, next spawn in %.2f s."),
+		UE_LOG(LogTemp, Display, TEXT("WaveDump: %s, progress %.0f%% (%d of %d spawned), pending %d (early %d / any %d / late %d), alive %d, next spawn in %.2f s."),
 			Waves->IsWaveActive() ? TEXT("active") : TEXT("no wave"),
-			Waves->GetProgress() * 100.f, Waves->GetResolvedCount(), Waves->GetRosterSize(),
+			Waves->GetProgress() * 100.f, Waves->GetSpawnedCount(), Waves->GetRosterSize(),
 			Waves->GetPendingCount(), Waves->GetPendingCountInWindow(ESpawnWindow::Early),
 			Waves->GetPendingCountInWindow(ESpawnWindow::Any), Waves->GetPendingCountInWindow(ESpawnWindow::Late),
 			Waves->GetAliveCount(), Waves->GetTimeUntilNextSpawn());
