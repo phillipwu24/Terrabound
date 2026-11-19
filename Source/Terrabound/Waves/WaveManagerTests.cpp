@@ -211,8 +211,8 @@ bool FWaveManagerOccupancyTest::RunTest(const FString& Parameters)
 }
 
 /**
- * Exits (PLAN.md 1.4b, D20 revised 2026-11-19): an exit is reported to RoundManager as a leak, progress
- * counts spawns rather than exits, and the wave resolves once every enemy has exited.
+ * Exits (PLAN.md 1.4b, D20): an exit is reported to RoundManager as a leak, progress counts spawns
+ * rather than exits, and the wave resolves once every enemy has exited.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWaveManagerExitsTest, "Terrabound.Waves.WaveManager.Exits", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
@@ -317,9 +317,8 @@ bool FWaveManagerEarlyTest::RunTest(const FString& Parameters)
 }
 
 /**
- * Late window (PLAN.md 1.4b, D20 revised 2026-11-19): a Late entry waits while any non-Late enemy is
- * still to spawn, and opens once they all have, while they are still alive and progress is below
- * LateWindowStart.
+ * Late window (PLAN.md 1.4b, D20): a Late entry waits while any non-Late enemy is still to spawn,
+ * and opens once they all have, though they are still alive and progress is below LateWindowStart.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWaveManagerLateTest, "Terrabound.Waves.WaveManager.Late", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 

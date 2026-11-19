@@ -218,7 +218,7 @@ bool UWaveManager::TrySpawn()
 	const FHexCoord Hex = FreeHexes[FMath::RandRange(0, FreeHexes.Num() - 1)];
 	if (!Enemy->EnterBoard(Hex))
 	{
-		// Destroyed before its handlers are bound, so it never counts as resolved; retried next tick.
+		// Destroyed before it joins Alive or binds handlers, so it stays pending; retried next tick.
 		Enemy->Destroy();
 		return false;
 	}
@@ -257,7 +257,7 @@ void UWaveManager::HandleEnemyDestroyed(AActor* DestroyedActor)
 
 void UWaveManager::HandleEnemyExited(AEnemyBase* Enemy)
 {
-	// The enemy destroys itself right after this, which is what counts it as resolved.
+	// The enemy destroys itself right after this, which removes it from Alive.
 	if (URoundManager* Rounds = GetWorld() ? GetWorld()->GetSubsystem<URoundManager>() : nullptr)
 	{
 		Rounds->NotifyEnemyExited();

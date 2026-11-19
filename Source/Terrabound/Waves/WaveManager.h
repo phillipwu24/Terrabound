@@ -23,12 +23,12 @@ class UEnemyData;
  * (read from the grid's bIsSpawn flags) and an eligible roster entry. Missing either, the timer
  * stays elapsed and retries every tick, so occupancy only ever delays a spawn.
  *
- * Progress is spawned / roster size (D20, revised 2026-11-19). Windows: Early entries are first in
- * line while progress is under EarlyWindowEnd and plain Any after; Late entries wait for
- * LateWindowStart, or until every non-Late enemy has spawned, so no entry can be stranded. Otherwise
- * the next enemy is picked at random among the pending ones. No seed: execution drift is accepted
- * (CLAUDE.md). The wave itself resolves only once nothing is pending or alive, where an enemy stops
- * being alive when its actor is destroyed: by exiting today, by dying from Phase 2.
+ * Progress is spawned / roster size. Windows (D20): Early entries are first in line while progress
+ * is under EarlyWindowEnd and plain Any after; Late entries wait for LateWindowStart, or until every
+ * non-Late enemy has spawned, so no entry can be stranded. Otherwise the next enemy is picked at
+ * random among the pending ones. No seed: execution drift is accepted (CLAUDE.md). The wave resolves
+ * once nothing is pending or alive; an enemy stops being alive when its actor is destroyed (exit
+ * today, death from Phase 2).
  */
 UCLASS()
 class TERRABOUND_API UWaveManager : public UTickableWorldSubsystem

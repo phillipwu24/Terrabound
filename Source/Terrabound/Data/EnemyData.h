@@ -36,8 +36,7 @@ public:
 
 	/**
 	 * Walking speed in hexes per second, not cm/s, so a HexRadius change never retunes it. 0.5 puts
-	 * an empty-board crossing (7 hexes) at 14 s, the user's tuning in PLAN.md 1.6/1.7 (Checkpoint 1
-	 * started at 2.0 and 3.5 s, which felt far too fast).
+	 * an empty-board crossing (7 hexes) at 14 s (PLAN.md 1.7).
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Movement", meta = (ClampMin = "0.1"))
 	float MoveSpeedHexesPerSecond = 0.5f;

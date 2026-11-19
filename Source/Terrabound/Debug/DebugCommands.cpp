@@ -1,7 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-// The project's debug console commands, per PLAN.md 0.5. This file starts near-empty and
-// every later phase adds one more FAutoConsoleCommand here — nothing is ever removed from it.
+// The project's debug console commands, per PLAN.md 0.5. Each phase adds its FAutoConsoleCommand
+// here; a command is removed only with the system it debugs (SpawnPathWalker went in 1.7).
 // FAutoConsoleCommand is self-registering and self-unregistering (module load/unload), so no
 // startup or shutdown wiring is needed elsewhere.
 

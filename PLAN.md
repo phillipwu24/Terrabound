@@ -73,7 +73,7 @@ assume them; change one here first if it needs revisiting.
   retired by 1.2b (D18).
 - **`UHexGrid::SetOccupant` overwrites.** It does not check occupancy, which is right for
   placement and wrong for a unit racing another into a hex. Task 1.1 adds a claim that fails.
-- **`ADebugPathWalker` is throwaway.** Delete it and `SpawnPathWalker` when `EnemyBase` walks (1.7).
+- **`ADebugPathWalker` is throwaway.** Delete it and `SpawnPathWalker` when `EnemyBase` walks (1.7). Done in 1.7.
   Keep `FHexPathfinder` and its tests.
 - **Star-up exists.** Units can be destroyed by merging, selling, and (new) dying. None recreates.
 - **Still open, deliberately:** leak cost, aggro radius beyond range, checkmate, scoutable round UI.
