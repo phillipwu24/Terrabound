@@ -127,8 +127,10 @@ What a blocked enemy does:
 - **The attack hex it wants is held by another enemy** → it sidesteps to another
   free hex within range of the same target. If none is free, it waits in place,
   keeping its lock, until one opens.
-- **Walking to the exit, next step holds another enemy** → it waits for the hex to
-  clear. Default only; flagged as open in `DESIGN.md`.
+- **Walking to the exit, next step holds another enemy** → it takes an equally
+  short free step if one exists (the two forward diagonals often tie), otherwise
+  waits for the hex to clear. This falls out of re-choosing the step each tick
+  with random ties, so it needs no code of its own (`PLAN.md` D18, 2026-11-19).
 
 **Movement is decided one hex at a time. Units store no path.** Each time an
 enemy arrives on a hex it chooses the next one, target check first — aggro takes
