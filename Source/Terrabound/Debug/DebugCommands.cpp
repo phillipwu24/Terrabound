@@ -25,6 +25,7 @@
 #include "../Economy/ShopSystem.h"
 #include "../Waves/RoundManager.h"
 #include "../Waves/WaveManager.h"
+#include "../Abilities/CombatAttributeSet.h"
 
 namespace
 {
@@ -610,6 +611,85 @@ namespace
 			Waves->GetPendingCountInWindow(ESpawnWindow::Any), Waves->GetPendingCountInWindow(ESpawnWindow::Late),
 			Waves->GetAliveCount(), Waves->GetTimeUntilNextSpawn());
 	}
+
+	/** One line per unit: live attributes beside the data asset values they started from. */
+	void LogUnitAttributes(const FHexCoord& Coord, const ABoardUnitBase& Unit)
+	{
+		const UAbilitySystemComponent* ASC = Unit.GetAbilitySystemComponent();
+		if (!ASC)
+		{
+			return;
+		}
+
+		FString Label = Unit.GetName();
+		FString Star;
+		float DataMaxHealth = 0.f, DataAttackDamage = 0.f, DataAttackSpeed = 0.f;
+		if (const AChampionBase* Champion = Cast<AChampionBase>(&Unit); Champion && Champion->GetChampionData())
+		{
+			const UChampionData* Data = Champion->GetChampionData();
+			Label = Data->DisplayName.ToString();
+			Star = FString::Printf(TEXT(" %d-star"), Champion->GetStarLevel());
+			DataMaxHealth = Data->MaxHealth;
+			DataAttackDamage = Data->AttackDamage;
+			DataAttackSpeed = Data->AttackSpeed;
+		}
+		else if (const AEnemyBase* Enemy = Cast<AEnemyBase>(&Unit); Enemy && Enemy->GetEnemyData())
+		{
+			const UEnemyData* Data = Enemy->GetEnemyData();
+			Label = Data->DisplayName.ToString();
+			DataMaxHealth = Data->MaxHealth;
+			DataAttackDamage = Data->AttackDamage;
+			DataAttackSpeed = Data->AttackSpeed;
+		}
+
+		UE_LOG(LogTemp, Display, TEXT("DumpAttributes %s %s%s: Health %g / MaxHealth %g (data %g), AttackDamage %g (data %g), AttackSpeed %g (data %g)"),
+			*Coord.ToString(), *Label, *Star,
+			ASC->GetNumericAttribute(UCombatAttributeSet::GetHealthAttribute()),
+			ASC->GetNumericAttribute(UCombatAttributeSet::GetMaxHealthAttribute()), DataMaxHealth,
+			ASC->GetNumericAttribute(UCombatAttributeSet::GetAttackDamageAttribute()), DataAttackDamage,
+			ASC->GetNumericAttribute(UCombatAttributeSet::GetAttackSpeedAttribute()), DataAttackSpeed);
+	}
+
+	void DebugDumpAttributes(const TArray<FString>& Args, UWorld* World)
+	{
+		const UHexGrid* Grid = World ? World->GetSubsystem<UHexGrid>() : nullptr;
+		if (!Grid)
+		{
+			UE_LOG(LogTemp, Error, TEXT("DumpAttributes: no HexGrid subsystem for this world."));
+			return;
+		}
+
+		TArray<FHexCoord> Coords;
+		if (Args.Num() == 0)
+		{
+			Coords = Grid->GetAllTileCoords();
+		}
+		else
+		{
+			int32 Q = 0, R = 0;
+			if (Args.Num() < 2 || !LexTryParseString(Q, *Args[0]) || !LexTryParseString(R, *Args[1]))
+			{
+				UE_LOG(LogTemp, Error, TEXT("DumpAttributes: usage: DumpAttributes [<q> <r>]"));
+				return;
+			}
+			Coords.Add(FHexCoord(Q, R));
+		}
+
+		int32 Count = 0;
+		for (const FHexCoord& Coord : Coords)
+		{
+			const FHexTile* Tile = Grid->GetTile(Coord);
+			if (const ABoardUnitBase* Unit = Tile ? Tile->Occupant.Get() : nullptr)
+			{
+				LogUnitAttributes(Coord, *Unit);
+				++Count;
+			}
+		}
+		if (Count == 0)
+		{
+			UE_LOG(LogTemp, Display, TEXT("DumpAttributes: no unit found."));
+		}
+	}
 }
 
 static FAutoConsoleCommand DebugPingCommand(
@@ -730,4 +810,10 @@ static FAutoConsoleCommandWithWorldAndArgs WaveDumpCommand(
 	TEXT("WaveDump"),
 	TEXT("Logs the current wave: progress, pending enemies by spawn window, alive count and the spawn timer."),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugWaveDump)
+);
+
+static FAutoConsoleCommandWithWorldAndArgs DumpAttributesCommand(
+	TEXT("DumpAttributes"),
+	TEXT("DumpAttributes [<q> <r>] - logs the GAS attributes of every board unit (or the one on that hex) beside its data asset values."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&DebugDumpAttributes)
 );

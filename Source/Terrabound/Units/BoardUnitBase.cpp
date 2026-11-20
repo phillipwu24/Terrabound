@@ -8,6 +8,8 @@
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
 #include "Animation/AnimSequence.h"
+#include "AbilitySystemComponent.h"
+#include "../Abilities/CombatAttributeSet.h"
 #include "../Grid/HexGrid.h"
 #include "../TerraboundSettings.h"
 
@@ -37,6 +39,25 @@ ABoardUnitBase::ABoardUnitBase()
 	HitBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	HitBox->SetCollisionResponseToAllChannels(ECR_Ignore);
 	HitBox->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+
+	AbilitySystem = CreateDefaultSubobject<UAbilitySystemComponent>(TEXT("AbilitySystem"));
+	// A default subobject of the owner actor, so the ASC finds it on its own.
+	CombatAttributes = CreateDefaultSubobject<UCombatAttributeSet>(TEXT("CombatAttributes"));
+}
+
+void ABoardUnitBase::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
+	// Before BeginPlay, so GAS is ready for a unit initialized straight after it is spawned.
+	AbilitySystem->InitAbilityActorInfo(this, this);
+}
+
+void ABoardUnitBase::InitializeAttributes(float MaxHealth, float AttackDamage, float AttackSpeed)
+{
+	AbilitySystem->SetNumericAttributeBase(UCombatAttributeSet::GetMaxHealthAttribute(), MaxHealth);
+	AbilitySystem->SetNumericAttributeBase(UCombatAttributeSet::GetHealthAttribute(), MaxHealth);
+	AbilitySystem->SetNumericAttributeBase(UCombatAttributeSet::GetAttackDamageAttribute(), AttackDamage);
+	AbilitySystem->SetNumericAttributeBase(UCombatAttributeSet::GetAttackSpeedAttribute(), AttackSpeed);
 }
 
 void ABoardUnitBase::SnapToHex(const FHexCoord& Coord)

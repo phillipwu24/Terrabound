@@ -18,13 +18,11 @@ class UAnimInstance;
  * it here would put an economy number outside the one config file (PLAN.md 0.4) and would let a
  * champion's cost silently disagree with its tier.
  *
- * The stat fields below are AttributeSet initialization data for a later checkpoint: stored, read
- * by nothing. No current-HP tracking, damage application, mana gain/spend, or any runtime stat
- * mutation belongs here - that is GAS's job starting at Step 2. MaxMana is included because
- * DESIGN.md's GAS section treats mana as universal (every champion gains it on attack and on
- * damage taken, then casts at a threshold) - but the ability it casts is deliberately not
- * referenced here: a TSubclassOf<UGameplayAbility> field needs the GameplayAbilities module and an
- * actual ability class, neither of which exist before GAS arrives.
+ * The stat fields below are a fresh 1-star unit's starting values. InitializeFromChampionData
+ * copies MaxHealth, AttackDamage and AttackSpeed into the unit's UCombatAttributeSet once, at
+ * creation (PLAN.md 2.1); after that GAS owns the live values and nothing writes back here.
+ * RangeInHexes is not an attribute (D6) and is read from here directly. MaxMana is read by nothing
+ * until mana arrives with the first cast ability (D6).
  */
 UCLASS()
 class TERRABOUND_API UChampionData : public UPrimaryDataAsset
@@ -49,7 +47,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Champion")
 	FGameplayTagContainer Traits;
 
-	// --- AttributeSet initialization data. Stored, read by nothing until GAS exists. ---
+	// --- Starting stats; see class comment. ---
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Champion|Stats")
 	float MaxHealth = 100.f;

@@ -39,6 +39,7 @@ void AEnemyBase::InitializeFromEnemyData(UEnemyData* Data)
 	}
 
 	EnemyData = Data;
+	InitializeAttributes(Data->MaxHealth, Data->AttackDamage, Data->AttackSpeed);
 
 	if (Mesh)
 	{

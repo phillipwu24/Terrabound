@@ -42,8 +42,9 @@ public:
 	AEnemyBase();
 
 	/**
-	 * Applies Data's skeletal mesh and anim blueprint to the inherited Mesh and stores Data so later
-	 * systems read stats from one place. Does not touch HexGrid - call EnterBoard to place and start it.
+	 * Applies Data's skeletal mesh and anim blueprint to the inherited Mesh, stores Data, and sets the
+	 * attributes from its stats at full health - so call it once, at spawn. Does not touch HexGrid -
+	 * call EnterBoard to place and start it.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Enemy")
 	void InitializeFromEnemyData(UEnemyData* Data);

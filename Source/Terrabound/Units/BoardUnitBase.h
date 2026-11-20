@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "AbilitySystemInterface.h"
 #include "../Grid/HexCoordinates.h"
 #include "BoardUnitBase.generated.h"
 
@@ -11,6 +12,8 @@ class USkeletalMeshComponent;
 class UCapsuleComponent;
 class UAnimSequence;
 class UAnimMontage;
+class UAbilitySystemComponent;
+class UCombatAttributeSet;
 
 /**
  * Which side of the board a unit belongs to. Two values only - CLAUDE.md's "Deliberately not
@@ -26,7 +29,7 @@ enum class EBoardUnitTeam : uint8
 /**
  * Shared base for champions and enemies (PLAN.md 4.2). Holds board coordinate and team
  * identity and knows how to snap itself to a hex's world position. Deliberately thin: nothing
- * champion-specific lives here - stats, cost, and abilities are ChampionData/ChampionBase's job
+ * champion-specific lives here - cost, traits and star level are ChampionData/ChampionBase's job
  * (task 4.3/4.4).
  *
  * Not an ACharacter and has no movement component. Units are snap-positioned from grid data, never
@@ -38,14 +41,20 @@ enum class EBoardUnitTeam : uint8
  * HexGrid::SetOccupant/TryOccupy/ClearOccupant itself -
  * a hex-to-hex swap touches two tiles at once, and that orchestration belongs with the code that
  * already knows both coordinates, not smuggled into a per-unit method.
+ *
+ * Owns the unit's AbilitySystemComponent and UCombatAttributeSet (PLAN.md 2.1), so champions and
+ * enemies share one GAS setup. The unit is both owner and avatar.
  */
 UCLASS()
-class TERRABOUND_API ABoardUnitBase : public AActor
+class TERRABOUND_API ABoardUnitBase : public AActor, public IAbilitySystemInterface
 {
 	GENERATED_BODY()
 
 public:
 	ABoardUnitBase();
+
+	UFUNCTION(BlueprintPure, Category = "Board Unit")
+	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override { return AbilitySystem; }
 
 	/**
 	 * Moves this unit to Coord's world position (via HexGrid's HexRadius) and updates
@@ -73,6 +82,14 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void PostInitializeComponents() override;
+
+	/**
+	 * Sets the attributes' base values from a unit's data asset, with Health at MaxHealth. Called
+	 * only when a unit is created: calling it on a living unit would undo its damage, which must
+	 * persist across waves (CLAUDE.md).
+	 */
+	void InitializeAttributes(float MaxHealth, float AttackDamage, float AttackSpeed);
 
 	/**
 	 * Sets CurrentCoord without moving the actor, for a unit that walks between hexes: it claims the
@@ -107,6 +124,12 @@ protected:
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Board Unit")
 	TObjectPtr<UCapsuleComponent> HitBox;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Board Unit")
+	TObjectPtr<UAbilitySystemComponent> AbilitySystem;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Board Unit")
+	TObjectPtr<UCombatAttributeSet> CombatAttributes;
 
 private:
 	/**

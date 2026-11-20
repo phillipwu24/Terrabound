@@ -15,9 +15,9 @@ class UAnimSequence;
  * type, in Content/Terrabound/Data/Enemies/. Enemies are spawned generically as AEnemyBase and
  * initialized from one of these; there is no per-enemy Blueprint.
  *
- * Every number here is a PLACEHOLDER. Only the movement and animation fields are read before Phase 2 -
- * the stats are AttributeSet initialization data (stored, read by nothing until GAS exists), same
- * arrangement as UChampionData.
+ * Every number here is a PLACEHOLDER. MaxHealth, AttackDamage and AttackSpeed are copied into the
+ * enemy's UCombatAttributeSet once, by InitializeFromEnemyData (PLAN.md 2.1), same arrangement as
+ * UChampionData. RangeInHexes and GoldOnKill are read from here directly.
  */
 UCLASS()
 class TERRABOUND_API UEnemyData : public UPrimaryDataAsset
@@ -65,7 +65,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Movement", meta = (ClampMin = "0"))
 	float SpawnHoldSeconds = 2.f;
 
-	// --- AttributeSet initialization data. Stored, read by nothing until Phase 2. ---
+	// --- Starting stats; see class comment. ---
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Stats")
 	float MaxHealth = 100.f;

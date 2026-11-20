@@ -64,6 +64,7 @@ void AChampionBase::InitializeFromChampionData(UChampionData* Data)
 	}
 
 	ChampionData = Data;
+	InitializeAttributes(Data->MaxHealth, Data->AttackDamage, Data->AttackSpeed);
 
 	if (Mesh)
 	{
