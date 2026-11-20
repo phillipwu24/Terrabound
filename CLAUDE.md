@@ -30,7 +30,8 @@ ignores units), 1.4a (`RoundManager`), 1.4b (`WaveManager`, plus a wave gap), 1.
 windows now count enemies spawned, not resolved) and 1.7 (crossing 14 s at 0.5 hexes/s,
 walker retired, Start key = Enter), 1.8 (walk loop played from C++, 2 s spawn hold) and
 1.9 (round HUD: Start button, round/wave label, gap countdown) are done, so **Phase 1 is
-complete**; next is Phase 2, starting with 2.1 (GAS foundation). Design revised 2026-11-17 (stationary champions, units
+complete**. Phase 2 has begun: 2.1 (GAS foundation: ASC and `UCombatAttributeSet` on every
+board unit, initialized from its data asset) is done; next is 2.2 (damage, death and kills). Design revised 2026-11-17 (stationary champions, units
 stop, rounds of waves, round-long damage) — `DESIGN.md` header.
 
 ## Build command

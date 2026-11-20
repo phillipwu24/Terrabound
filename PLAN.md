@@ -526,6 +526,25 @@ Budget real time here: the first ability is where GAS setup costs are paid.
 **Done when:** a `DumpAttributes` console command prints a board unit's attributes and they match
 its data asset.
 
+**Done (2026-11-19; PIE on `MainBoard`, checked by the user).** As built:
+- **Plugin.** `GASToolsets` is editor-only, so `GameplayAbilities` is now listed in
+  `Terrabound.uproject` itself; `GameplayAbilities` and `GameplayTasks` are in `Terrabound.Build.cs`.
+- **`UCombatAttributeSet`** (`Abilities/CombatAttributeSet.h`, no `.cpp`): `Health`, `MaxHealth`,
+  `AttackDamage`, `AttackSpeed` and meta `IncomingDamage`. No logic yet; clamping and damage are
+  2.2. Not replicated (single-player).
+- **`ABoardUnitBase`** implements `IAbilitySystemInterface` and creates the ASC and the attribute
+  set as default subobjects; the unit is owner and avatar, with `InitAbilityActorInfo` in
+  `PostInitializeComponents`. Its protected `InitializeAttributes` sets the base values directly
+  on the ASC (no init GameplayEffect), with `Health = MaxHealth`.
+- **Init.** `InitializeFromChampionData` / `InitializeFromEnemyData` copy the three stats once, at
+  creation; nothing writes back to the data asset. Calling them on a living unit would undo its
+  damage, so they run only at creation (buy, debug spawn, BeginPlay auto-init). `RangeInHexes`
+  stays a data field (not an attribute); `MaxMana` stays unread until mana exists. Star level is
+  not applied yet (2.5).
+- **`DumpAttributes [q r]`** logs every board unit (or one hex) with each attribute beside its
+  data value, and a champion's star level.
+- **Tests:** new `Abilities.Init` (mutation-checked). 33/33 pass.
+
 ### 2.2 Damage, death and kills (`Abilities/`, `Units/`)
 **[C++]**
 A damage GameplayEffect writes `IncomingDamage` (magnitude by caller); the attribute set applies it
